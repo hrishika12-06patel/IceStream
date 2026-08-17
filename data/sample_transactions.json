@@ -1,0 +1,102 @@
+[
+  {
+    "order_id": 10001,
+    "customer_id": "C101",
+    "product_id": "P501",
+    "quantity": 2,
+    "price": 850.00,
+    "tax_amount": 153.00,
+    "payment_method": "Credit Card",
+    "timestamp": "2026-08-15T10:00:01"
+  },
+  {
+    "order_id": 10002,
+    "customer_id": "C102",
+    "product_id": "P502",
+    "quantity": 1,
+    "price": 1200.00,
+    "tax_amount": 216.00,
+    "payment_method": "UPI",
+    "timestamp": "2026-08-15T10:00:02"
+  },
+  {
+    "order_id": 10003,
+    "customer_id": "C103",
+    "product_id": "P503",
+    "quantity": 3,
+    "price": 450.00,
+    "tax_amount": 81.00,
+    "payment_method": "Debit Card",
+    "timestamp": "2026-08-15T10:00:03"
+  },
+  {
+    "order_id": 10004,
+    "customer_id": "C104",
+    "product_id": "P504",
+    "quantity": 1,
+    "price": 2500.00,
+    "tax_amount": 450.00,
+    "payment_method": "Credit Card",
+    "timestamp": "2026-08-15T10:00:04"
+  },
+  {
+    "order_id": 10005,
+    "customer_id": "C105",
+    "product_id": "P505",
+    "quantity": 4,
+    "price": 300.00,
+    "tax_amount": 216.00,
+    "payment_method": "UPI",
+    "timestamp": "2026-08-15T10:00:05"
+  },
+  {
+    "order_id": 10006,
+    "customer_id": "C106",
+    "product_id": "P506",
+    "quantity": 2,
+    "price": 1500.00,
+    "tax_amount": 540.00,
+    "payment_method": "Net Banking",
+    "timestamp": "2026-08-15T10:00:06"
+  },
+  {
+    "order_id": 10007,
+    "customer_id": "C107",
+    "product_id": "P507",
+    "quantity": 1,
+    "price": 999.00,
+    "tax_amount": 179.82,
+    "payment_method": "UPI",
+    "timestamp": "2026-08-15T10:00:07"
+  },
+  {
+    "order_id": 10008,
+    "customer_id": "C108",
+    "product_id": "P508",
+    "quantity": 5,
+    "price": 200.00,
+    "tax_amount": 180.00,
+    "payment_method": "Debit Card",
+    "timestamp": "2026-08-15T10:00:08"
+  },
+  {
+    "order_id": 10009,
+    "customer_id": "C109",
+    "product_id": "P509",
+    "quantity": 2,
+    "price": 1750.00,
+    "tax_amount": 630.00,
+    "payment_method": "Credit Card",
+    "timestamp": "2026-08-15T10:00:09"
+  },
+  {
+    "order_id": 10010,
+    "customer_id": "C110",
+    "product_id": "P510",
+    "quantity": 1,
+    "price": 3200.00,
+    "tax_amount": 576.00,
+    "payment_method": "UPI",
+    "timestamp": "2026-08-15T10:00:10"
+  }
+]
