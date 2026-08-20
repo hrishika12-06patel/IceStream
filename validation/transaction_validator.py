@@ -87,7 +87,9 @@ def validate_transaction(transaction: dict) -> tuple[bool, list[str]]:
     # 6. Validate quantity
     # --------------------------------------------------
 
-    if not isinstance(transaction["quantity"], int):
+    if isinstance(transaction["quantity"], bool) or not isinstance(
+        transaction["quantity"], int
+    ):
         errors.append("quantity must be an integer")
     elif transaction["quantity"] <= 0:
         errors.append("quantity must be greater than 0")
@@ -96,7 +98,9 @@ def validate_transaction(transaction: dict) -> tuple[bool, list[str]]:
     # 7. Validate price
     # --------------------------------------------------
 
-    if not isinstance(transaction["price"], (int, float)):
+    if isinstance(transaction["price"], bool) or not isinstance(
+        transaction["price"], (int, float)
+    ):
         errors.append("price must be a number")
     elif transaction["price"] < 0:
         errors.append("price cannot be negative")
@@ -105,7 +109,9 @@ def validate_transaction(transaction: dict) -> tuple[bool, list[str]]:
     # 8. Validate tax_amount
     # --------------------------------------------------
 
-    if not isinstance(transaction["tax_amount"], (int, float)):
+    if isinstance(transaction["tax_amount"], bool) or not isinstance(
+        transaction["tax_amount"], (int, float)
+    ):
         errors.append("tax_amount must be a number")
     elif transaction["tax_amount"] < 0:
         errors.append("tax_amount cannot be negative")
