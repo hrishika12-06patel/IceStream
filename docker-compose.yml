@@ -23,11 +23,46 @@ services:
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
 
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-
       KAFKA_NUM_PARTITIONS: 3
 
     volumes:
       - kafka_data:/var/lib/kafka/data
+
+  jobmanager:
+    image: flink:2.3.0-scala_2.12
+    container_name: icestream-jobmanager
+
+    ports:
+      - "8081:8081"
+
+    command: jobmanager
+
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        jobmanager.rpc.port: 6123
+        jobmanager.bind-host: 0.0.0.0
+        rest.address: 0.0.0.0
+
+  taskmanager:
+    image: flink:2.3.0-scala_2.12
+    container_name: icestream-taskmanager
+
+    depends_on:
+      - jobmanager
+
+    command: taskmanager
+
+    environment:
+      - |
+        FLINK_PROPERTIES=
+        jobmanager.rpc.address: jobmanager
+        jobmanager.rpc.port: 6123
+        taskmanager.host: taskmanager
+        taskmanager.bind-host: 0.0.0.0
+        taskmanager.rpc.port: 6122
+        taskmanager.numberOfTaskSlots: 2
 
 volumes:
   kafka_data:
