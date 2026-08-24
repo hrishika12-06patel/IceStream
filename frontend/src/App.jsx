@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -30,6 +30,11 @@ import {
   ShieldCheck,
   Zap,
 } from "lucide-react";
+
+import {
+  getPipelineStatus,
+  simulatePipelineUpdate,
+} from "./api/pipelineApi";
 
 import "@xyflow/react/dist/style.css";
 import "./App.css";
@@ -508,11 +513,112 @@ function LatencyCard() {
 
 function App() {
 
+  const [pipelineData, setPipelineData] = useState(null);
+
+  const [loading, setLoading] = useState(true);
+
+  const [error, setError] = useState("");
+
+  const [isLive, setIsLive] = useState(true);
+
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+
   const [nodes, setNodes, onNodesChange] =
     useNodesState(initialNodes);
 
   const [edges, setEdges, onEdgesChange] =
     useEdgesState(initialEdges);
+
+  useEffect(() => {
+    async function loadPipelineData() {
+      try {
+        setLoading(true);
+        setError("");
+
+        const data = await getPipelineStatus();
+
+        setPipelineData(data);
+        setLastUpdated(new Date());
+      } catch (err) {
+        console.error(err);
+        setError("Unable to load pipeline data.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadPipelineData();
+  }, []);
+
+  useEffect(() => {
+    if (!isLive) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setPipelineData((currentData) => {
+        if (!currentData) {
+          return currentData;
+        }
+
+        const updatedData =
+          simulatePipelineUpdate(currentData);
+
+        setLastUpdated(new Date());
+
+        return updatedData;
+      });
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isLive]);
+
+  useEffect(() => {
+    if (!pipelineData) {
+      return;
+    }
+
+    setNodes((currentNodes) =>
+      currentNodes.map((node) => {
+        if (node.id === "kafka") {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              metric:
+                `${pipelineData.services.kafka.eventsPerSecond.toLocaleString()}/s`,
+            },
+          };
+        }
+
+        if (node.id === "flink") {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              metric:
+                `${pipelineData.services.flink.processingRate.toLocaleString()}/s`,
+            },
+          };
+        }
+
+        if (node.id === "iceberg") {
+          return {
+            ...node,
+            data: {
+              ...node.data,
+              metric:
+                `${(
+                  pipelineData.services.iceberg.recordsStored / 1000000
+                ).toFixed(2)}M`,
+            },
+          };
+        }
+
+        return node;
+      })
+    );
+  }, [pipelineData, setNodes]);
 
   const onConnect = useCallback(
     (connection) => {
@@ -549,12 +655,29 @@ function App() {
               </p>
             </div>
 
-            <button className="primary-button">
+            <button 
+              className="primary-button"
+              onClick={() => setIsLive((current) => !current)}
+            >
               <Play size={15} />
-              Live pipeline
+              {isLive ? "Live pipeline" : "Start monitoring"}
             </button>
 
           </div>
+
+          {loading && (
+            <div className="pipeline-status">
+              <span></span>
+              Loading pipeline data...
+            </div>
+          )}
+
+          {error && (
+            <div className="pipeline-status">
+              <span></span>
+              {error}
+            </div>
+          )}
 
           {/* Pipeline */}
 
@@ -629,28 +752,46 @@ function App() {
             <MetricCard
               icon={<Zap size={19} />}
               label="Events / second"
-              value="1,240"
+              value={
+                  pipelineData
+                    ? pipelineData.metrics.eventsPerSecond.toLocaleString()
+                    : "--"
+              }
               change="12.4%"
             />
 
             <MetricCard
               icon={<Activity size={19} />}
               label="Pipeline latency"
-              value="47 ms"
+              value={
+                pipelineData
+                  ? `${pipelineData.metrics.pipelineLatency} ms`
+                  : "--"
+              }
               change="4.8%"
             />
 
             <MetricCard
               icon={<ShieldCheck size={19} />}
               label="Data quality"
-              value="99.8%"
+              value={
+                pipelineData
+                  ? `${pipelineData.metrics.dataQuality}%`
+                  : "--"
+              }
               change="1.2%"
             />
 
             <MetricCard
               icon={<Boxes size={19} />}
               label="Records processed"
-              value="1.2M"
+              value={
+                pipelineData
+                  ? `${(
+                      pipelineData.metrics.recordsProcessed / 1000000
+                    ).toFixed(2)}M`
+                  : "--"
+              }
               change="8.7%"
             />
 
@@ -682,7 +823,12 @@ function App() {
           </div>
 
           <span>
-            Last updated just now
+            Last updated{" "}
+            {lastUpdated.toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}
           </span>
 
         </footer>
