@@ -58,8 +58,11 @@ function PipelineNode({ data }) {
         </div>
 
         <div className="node-status">
+
           <span className="status-dot"></span>
-          Healthy
+
+          {data.status || "Unknown"}
+
         </div>
       </div>
 
@@ -175,7 +178,10 @@ const initialEdges = [
    Sidebar
 ----------------------------- */
 
-function Sidebar() {
+function Sidebar({ pipelineHealth }) {
+  const healthy =
+    pipelineHealth === "healthy";
+
   return (
     <aside className="sidebar">
 
@@ -262,16 +268,24 @@ function Sidebar() {
 
         <div className="system-card-top">
           <span>System health</span>
-          <span className="health-dot"></span>
+          <span className={`health-dot ${
+              healthy ? "" : "health-dot-error"
+            }`}>
+          </span>
         </div>
 
-        <strong>Operational</strong>
+        <strong>{healthy ? "Operational" : "Unavailable"}</strong>
 
         <div className="health-bar">
-          <div></div>
+          <div style={{
+              width: healthy
+                ? "99%"
+                : "20%",
+            }}>
+          </div>
         </div>
 
-        <small>All pipeline services are healthy</small>
+        <small>{healthy ? "All pipeline services are healthy" : "Unable to reach pipeline backend"}</small>
 
       </div>
 
@@ -283,7 +297,10 @@ function Sidebar() {
    Header
 ----------------------------- */
 
-function Header() {
+function Header({ pipelineHealth }) {
+  const healthy =
+    pipelineHealth === "healthy";
+
   return (
     <header className="topbar">
 
@@ -299,9 +316,13 @@ function Header() {
 
       <div className="topbar-actions">
 
-        <div className="operational">
+        <div className={`operational ${
+            healthy
+              ? ""
+              : "operational-error"
+          }`}>
           <span></span>
-          All systems operational
+          {healthy ? "All systems operational" : "Pipeline unavailable"}
         </div>
 
         <button className="help-button">
@@ -353,51 +374,77 @@ function RecentAlerts() {
     <div className="dashboard-card alerts-card">
 
       <div className="card-header">
+
         <div>
-          <h3>Recent alerts</h3>
-          <span>Latest pipeline events</span>
+
+          <h3>
+            Recent alerts
+          </h3>
+
+          <span>
+            Latest pipeline events
+          </span>
+
         </div>
 
-        <button className="more-button">•••</button>
+        <button className="more-button">
+          •••
+        </button>
+
       </div>
+
 
       <div className="alerts-list">
 
-        <div className="alert-item warning">
-          <div className="alert-icon">
-            <Bell size={15} />
+        {alerts.length === 0 ? (
+
+          <div className="empty-state">
+            No recent alerts
           </div>
 
-          <div>
-            <strong>Consumer lag detected</strong>
-            <p>Kafka consumer lag increased slightly.</p>
-            <small>2 min ago</small>
-          </div>
-        </div>
+        ) : (
 
-        <div className="alert-item info">
-          <div className="alert-icon">
-            <Activity size={15} />
-          </div>
+          alerts.map((alert) => (
 
-          <div>
-            <strong>Pipeline processing normally</strong>
-            <p>Flink processing rate is stable.</p>
-            <small>8 min ago</small>
-          </div>
-        </div>
+            <div
+              className={`alert-item ${alert.type}`}
+              key={alert.id}
+            >
 
-        <div className="alert-item success">
-          <div className="alert-icon">
-            <ShieldCheck size={15} />
-          </div>
+              <div className="alert-icon">
 
-          <div>
-            <strong>Iceberg write completed</strong>
-            <p>Latest batch stored successfully.</p>
-            <small>14 min ago</small>
-          </div>
-        </div>
+                {alert.type === "success" ? (
+                  <ShieldCheck size={15} />
+                ) : alert.type === "info" ? (
+                  <Activity size={15} />
+                ) : (
+                  <Bell size={15} />
+                )}
+
+              </div>
+
+
+              <div>
+
+                <strong>
+                  {alert.title}
+                </strong>
+
+                <p>
+                  {alert.message}
+                </p>
+
+                <small>
+                  {alert.time}
+                </small>
+
+              </div>
+
+            </div>
+
+          ))
+
+        )}
 
       </div>
 
@@ -409,7 +456,19 @@ function RecentAlerts() {
    Active Pipelines
 ----------------------------- */
 
-function ActivePipelines() {
+function ActivePipelines({
+  pipelineData,
+}) {
+
+  const kafka =
+    pipelineData.services.kafka;
+
+  const flink =
+    pipelineData.services.flink;
+
+  const iceberg =
+    pipelineData.services.iceberg;
+  
   return (
     <div className="dashboard-card">
 
@@ -430,20 +489,20 @@ function ActivePipelines() {
 
         <div className="table-row">
           <span>transaction-stream</span>
-          <span className="running">Running</span>
-          <span>1,240/s</span>
+          <span className="running">{kafka.status}</span>
+          <span>{kafka.eventsPerSecond}/s</span>
         </div>
 
         <div className="table-row">
           <span>quality-monitor</span>
-          <span className="running">Running</span>
-          <span>1,238/s</span>
+          <span className="running">{flink.status}</span>
+          <span>{flink.processingRate}/s</span>
         </div>
 
         <div className="table-row">
           <span>iceberg-writer</span>
-          <span className="pending">Monitoring</span>
-          <span>1,238/s</span>
+          <span className="pending">{iceberg.status}</span>
+          <span>{iceberg.recordsStored.toLocaleString()}</span>
         </div>
 
       </div>
@@ -456,7 +515,21 @@ function ActivePipelines() {
    Latency Card
 ----------------------------- */
 
-function LatencyCard() {
+function LatencyCard({
+  pipelineData,
+}) {
+  const kafka =
+    pipelineData.services.kafka;
+
+  const flink =
+    pipelineData.services.flink;
+
+  const iceberg =
+    pipelineData.services.iceberg;
+
+  const total =
+    pipelineData.metrics.pipelineLatency;
+
   return (
     <div className="dashboard-card">
 
@@ -472,33 +545,57 @@ function LatencyCard() {
         <div className="latency-row">
           <span>Kafka</span>
           <div className="latency-bar">
-            <div style={{ width: "28%" }}></div>
+            <div style={{
+                width: `${Math.min(
+                  kafka.latency * 3,
+                  100
+                )}%`,
+              }}>
+            </div>
           </div>
-          <strong>8ms</strong>
+          <strong>{kafka.latency}ms</strong>
         </div>
 
         <div className="latency-row">
           <span>Flink</span>
           <div className="latency-bar">
-            <div style={{ width: "55%" }}></div>
+            <div style={{
+                width: `${Math.min(
+                  flink.latency * 3,
+                  100
+                )}%`,
+              }}>
+            </div>
           </div>
-          <strong>16ms</strong>
+          <strong>{flink.latency}ms</strong>
         </div>
 
         <div className="latency-row">
           <span>Iceberg</span>
           <div className="latency-bar">
-            <div style={{ width: "75%" }}></div>
+            <div style={{
+                width: `${Math.min(
+                  iceberg.latency * 3,
+                  100
+                )}%`,
+              }}>
+            </div>
           </div>
-          <strong>23ms</strong>
+          <strong>{iceberg.latency}ms</strong>
         </div>
 
         <div className="latency-row">
           <span>Total</span>
           <div className="latency-bar">
-            <div style={{ width: "90%" }}></div>
+            <div style={{
+                width: `${Math.min(
+                  total * 2,
+                  100
+                )}%`,
+              }}>
+            </div>
           </div>
-          <strong>47ms</strong>
+          <strong>{total}ms</strong>
         </div>
 
       </div>
@@ -519,185 +616,373 @@ function App() {
 
   const [error, setError] = useState("");
 
-  const [isLive, setIsLive] = useState(true);
-
-  const [lastUpdated, setLastUpdated] = useState(new Date());
-
   const [nodes, setNodes, onNodesChange] =
     useNodesState(initialNodes);
 
   const [edges, setEdges, onEdgesChange] =
     useEdgesState(initialEdges);
 
-  useEffect(() => {
-    async function loadPipelineData() {
-      try {
-        setLoading(true);
-        setError("");
+  const loadPipelineData = useCallback(
+    async () => {
 
-        const data = await getPipelineStatus();
+      try {
+
+        setError(null);
+
+        const data =
+          await getPipelineStatus();
 
         setPipelineData(data);
-        setLastUpdated(new Date());
+
       } catch (err) {
-        console.error(err);
-        setError("Unable to load pipeline data.");
+
+        console.error(
+          "Pipeline API error:",
+          err
+        );
+
+        setError(
+          "Unable to fetch pipeline metrics"
+        );
+
       } finally {
+
         setLoading(false);
+
       }
-    }
+
+    },
+    []
+  );
+
+  useEffect(() => {
 
     loadPipelineData();
-  }, []);
+
+  }, [loadPipelineData]);
 
   useEffect(() => {
-    if (!isLive) {
-      return;
-    }
 
-    const interval = setInterval(() => {
-      setPipelineData((currentData) => {
-        if (!currentData) {
-          return currentData;
-        }
-
-        const updatedData =
-          simulatePipelineUpdate(currentData);
-
-        setLastUpdated(new Date());
-
-        return updatedData;
-      });
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [isLive]);
-
-  useEffect(() => {
     if (!pipelineData) {
       return;
     }
 
+
+    const kafka =
+      pipelineData.services.kafka;
+
+    const flink =
+      pipelineData.services.flink;
+
+    const iceberg =
+      pipelineData.services.iceberg;
+
+
     setNodes((currentNodes) =>
       currentNodes.map((node) => {
+
         if (node.id === "kafka") {
+
           return {
             ...node,
+
             data: {
               ...node.data,
+
               metric:
-                `${pipelineData.services.kafka.eventsPerSecond.toLocaleString()}/s`,
+                kafka.eventsPerSecond.toLocaleString(),
+
+              status:
+                kafka.status,
             },
           };
+
         }
+
 
         if (node.id === "flink") {
+
           return {
             ...node,
+
             data: {
               ...node.data,
+
               metric:
-                `${pipelineData.services.flink.processingRate.toLocaleString()}/s`,
+                `${flink.processingRate.toLocaleString()}/s`,
+
+              status:
+                flink.status,
             },
           };
+
         }
+
 
         if (node.id === "iceberg") {
+
           return {
             ...node,
+
             data: {
               ...node.data,
+
               metric:
-                `${(
-                  pipelineData.services.iceberg.recordsStored / 1000000
-                ).toFixed(2)}M`,
+                iceberg.recordsStored.toLocaleString(),
+
+              status:
+                iceberg.status,
             },
           };
+
         }
 
+
         return node;
+
       })
     );
+
   }, [pipelineData, setNodes]);
+
+  useEffect(() => {
+
+    if (!pipelineData) {
+      return;
+    }
+
+
+    const interval =
+      setInterval(() => {
+
+        setPipelineData((current) => {
+
+          if (!current) {
+            return current;
+          }
+
+          return simulatePipelineUpdate(
+            current
+          );
+
+        });
+
+      }, 5000);
+
+
+    return () =>
+      clearInterval(interval);
+
+  }, []);
+
+
+  /* =========================
+     CONNECT REACT FLOW NODES
+  ========================= */
 
   const onConnect = useCallback(
     (connection) => {
+
       setEdges((currentEdges) =>
-        addEdge(connection, currentEdges)
+        addEdge(
+          connection,
+          currentEdges
+        )
       );
+
     },
     [setEdges]
   );
 
+
+  /* =========================
+     LOADING STATE
+  ========================= */
+
+  if (loading) {
+
+    return (
+      <div className="app loading-screen">
+
+        <div className="loading-card">
+
+          <div className="loading-spinner"></div>
+
+          <h2>
+            Loading IceStream
+          </h2>
+
+          <p>
+            Fetching pipeline metrics...
+          </p>
+
+        </div>
+
+      </div>
+    );
+
+  }
+
+
+  /* =========================
+     FALLBACK
+  ========================= */
+
+  if (!pipelineData) {
+
+    return (
+      <div className="app loading-screen">
+
+        <div className="loading-card error-card">
+
+          <h2>
+            Pipeline unavailable
+          </h2>
+
+          <p>
+            Unable to load pipeline information.
+          </p>
+
+          <button
+            className="primary-button"
+            onClick={loadPipelineData}
+          >
+            Retry
+          </button>
+
+        </div>
+
+      </div>
+    );
+
+  }
+
+
+  const metrics =
+    pipelineData.metrics;
+
+  const pipelineHealth =
+    error
+      ? "offline"
+      : "healthy";
+
+
   return (
     <div className="app">
 
-      <Sidebar />
+      <Sidebar
+        pipelineHealth={
+          pipelineHealth
+        }
+      />
+
 
       <div className="main">
 
-        <Header />
+        <Header
+          pipelineHealth={
+            pipelineHealth
+          }
+        />
+
 
         <main className="content">
+
+
+          {/* =========================
+              PAGE HEADING
+          ========================= */}
 
           <div className="page-heading">
 
             <div>
+
               <div className="eyebrow">
                 REAL-TIME OBSERVABILITY
               </div>
 
-              <h2>Pipeline overview</h2>
+              <h2>
+                Pipeline overview
+              </h2>
 
               <p>
-                Monitor your streaming data pipeline
-                from ingest to lakehouse storage.
+                Monitor your streaming data
+                pipeline from ingest to
+                lakehouse storage.
               </p>
+
             </div>
 
-            <button 
-              className="primary-button"
-              onClick={() => setIsLive((current) => !current)}
-            >
+
+            <button className="primary-button">
+
               <Play size={15} />
-              {isLive ? "Live pipeline" : "Start monitoring"}
+
+              Live pipeline
+
             </button>
 
           </div>
 
-          {loading && (
-            <div className="pipeline-status">
-              <span></span>
-              Loading pipeline data...
-            </div>
-          )}
+
+          {/* =========================
+              ERROR BANNER
+          ========================= */}
 
           {error && (
-            <div className="pipeline-status">
-              <span></span>
-              {error}
+
+            <div className="backend-error">
+
+              <Bell size={15} />
+
+              <span>
+                {error}
+              </span>
+
             </div>
+
           )}
 
-          {/* Pipeline */}
+
+          {/* =========================
+              PIPELINE
+          ========================= */}
 
           <section className="dashboard-card pipeline-card">
 
             <div className="card-header">
 
               <div>
-                <h3>Streaming data pipeline</h3>
+
+                <h3>
+                  Streaming data pipeline
+                </h3>
+
                 <span>
                   Ingest → Process → Serve
                 </span>
+
               </div>
 
-              <div className="pipeline-status">
+
+              <div
+                className={`pipeline-status ${
+                  error
+                    ? "pipeline-status-error"
+                    : ""
+                }`}
+              >
+
                 <span></span>
-                Healthy
+
+                {error
+                  ? "Unavailable"
+                  : "Healthy"}
+
               </div>
 
             </div>
+
 
             <div className="flow-container">
 
@@ -727,15 +1012,23 @@ function App() {
 
                 <MiniMap
                   nodeColor={(node) => {
-                    if (node.data?.variant === "kafka") {
+
+                    if (
+                      node.data?.variant ===
+                      "kafka"
+                    ) {
                       return "#3b82f6";
                     }
 
-                    if (node.data?.variant === "flink") {
+                    if (
+                      node.data?.variant ===
+                      "flink"
+                    ) {
                       return "#8b5cf6";
                     }
 
                     return "#22c55e";
+
                   }}
                 />
 
@@ -745,7 +1038,10 @@ function App() {
 
           </section>
 
-          {/* Metrics */}
+
+          {/* =========================
+              METRICS
+          ========================= */}
 
           <div className="metrics-grid">
 
@@ -753,82 +1049,104 @@ function App() {
               icon={<Zap size={19} />}
               label="Events / second"
               value={
-                  pipelineData
-                    ? pipelineData.metrics.eventsPerSecond.toLocaleString()
-                    : "--"
+                metrics.eventsPerSecond.toLocaleString()
               }
-              change="12.4%"
+              change="Live"
             />
+
 
             <MetricCard
               icon={<Activity size={19} />}
               label="Pipeline latency"
-              value={
-                pipelineData
-                  ? `${pipelineData.metrics.pipelineLatency} ms`
-                  : "--"
-              }
-              change="4.8%"
+              value={`${metrics.pipelineLatency} ms`}
+              change="Live"
             />
+
 
             <MetricCard
               icon={<ShieldCheck size={19} />}
               label="Data quality"
-              value={
-                pipelineData
-                  ? `${pipelineData.metrics.dataQuality}%`
-                  : "--"
-              }
-              change="1.2%"
+              value={`${metrics.dataQuality}%`}
+              change="Live"
             />
+
 
             <MetricCard
               icon={<Boxes size={19} />}
               label="Records processed"
               value={
-                pipelineData
-                  ? `${(
-                      pipelineData.metrics.recordsProcessed / 1000000
-                    ).toFixed(2)}M`
-                  : "--"
+                metrics.recordsProcessed.toLocaleString()
               }
-              change="8.7%"
+              change="Live"
             />
 
           </div>
 
-          {/* Lower Dashboard */}
+
+          {/* =========================
+              LOWER DASHBOARD
+          ========================= */}
 
           <div className="lower-grid">
 
-            <ActivePipelines />
+            <ActivePipelines
+              pipelineData={
+                pipelineData
+              }
+            />
 
-            <LatencyCard />
 
-            <RecentAlerts />
+            <LatencyCard
+              pipelineData={
+                pipelineData
+              }
+            />
+
+
+            <RecentAlerts
+              alerts={
+                pipelineData.alerts || []
+              }
+            />
 
           </div>
 
         </main>
 
+
+        {/* =========================
+            FOOTER
+        ========================= */}
+
         <footer className="footer">
 
           <div>
-            <span className="footer-live"></span>
-            Live
+
+            <span
+              className="footer-live"
+            ></span>
+
+            {error
+              ? "Offline"
+              : "Live"}
+
             <span>•</span>
+
             IceStream
+
             <span>•</span>
+
             Real-Time Lakehouse
+
           </div>
 
+
           <span>
-            Last updated{" "}
-            {lastUpdated.toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-              second: "2-digit",
-            })}
+
+            {error
+              ? "Backend unavailable"
+              : "Live backend data"}
+
           </span>
 
         </footer>

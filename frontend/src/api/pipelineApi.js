@@ -1,3 +1,6 @@
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || null;
+
 const initialPipelineData = {
   services: {
     kafka: {
@@ -58,9 +61,26 @@ const initialPipelineData = {
 
 
 export async function getPipelineStatus() {
-  await new Promise((resolve) => setTimeout(resolve, 300));
 
-  return JSON.parse(JSON.stringify(initialPipelineData));
+  if (API_BASE_URL) {
+    const response = await fetch(
+      `${API_BASE_URL}/pipeline/status`
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `Backend request failed: ${response.status}`
+      );
+    }
+
+    return await response.json();
+  }
+
+  await new Promise((resolve) =>
+    setTimeout(resolve, 300)
+  );
+
+  return structuredClone(initialPipelineData);
 }
 
 
