@@ -39,6 +39,9 @@ import {
 import "@xyflow/react/dist/style.css";
 import "./App.css";
 
+import DataQualityPanel
+  from "./components/DataQualityPanel";
+
 /* -----------------------------
    Pipeline Custom Node
 ----------------------------- */
@@ -369,7 +372,7 @@ function MetricCard({ icon, label, value, change }) {
    Recent Alerts
 ----------------------------- */
 
-function RecentAlerts() {
+function RecentAlerts({ alerts = [] }) {
   return (
     <div className="dashboard-card alerts-card">
 
@@ -1104,12 +1107,14 @@ function App() {
 
 
             <RecentAlerts
-              alerts={
-                pipelineData.alerts || []
-              }
+              alerts={pipelineData?.alerts || []}
             />
 
           </div>
+
+          {/* Data Quality */}
+
+          <DataQualityPanel />
 
         </main>
 
