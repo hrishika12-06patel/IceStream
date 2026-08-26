@@ -1436,3 +1436,427 @@
 
   font-size: 9px;
 }
+
+/* =========================
+   DATA QUALITY
+========================= */
+
+.data-quality-section {
+  margin-top: 28px;
+}
+
+
+/* Section heading */
+
+.data-quality-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+
+  margin-bottom: 16px;
+}
+
+.data-quality-heading h2 {
+  margin: 0;
+
+  color: #f4f7fb;
+
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.data-quality-heading p {
+  margin: 5px 0 0;
+
+  color: #617089;
+
+  font-size: 10px;
+}
+
+
+/* Overall status */
+
+.quality-overall-status {
+  min-width: 150px;
+
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 10px 13px;
+
+  border-radius: 9px;
+
+  border: 1px solid #1b2940;
+
+  background: #0d1728;
+}
+
+.quality-overall-status span {
+  display: block;
+
+  color: #64748b;
+
+  font-size: 8px;
+}
+
+.quality-overall-status strong {
+  display: block;
+
+  margin-top: 2px;
+
+  color: #e8edf7;
+
+  font-size: 15px;
+}
+
+.quality-healthy {
+  color: #4ade80;
+
+  border-color:
+    rgba(34, 197, 94, 0.25);
+
+  background:
+    rgba(34, 197, 94, 0.06);
+}
+
+.quality-warning {
+  color: #fbbf24;
+
+  border-color:
+    rgba(245, 158, 11, 0.25);
+
+  background:
+    rgba(245, 158, 11, 0.06);
+}
+
+
+/* =========================
+   QUALITY METRICS
+========================= */
+
+.quality-metrics-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(4, 1fr);
+
+  gap: 12px;
+
+  margin-bottom: 14px;
+}
+
+.quality-metric-card {
+  padding: 15px;
+
+  border-radius: 11px;
+
+  border: 1px solid #1b2940;
+
+  background:
+    linear-gradient(
+      145deg,
+      #0f1828,
+      #0b1422
+    );
+}
+
+.quality-metric-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  color: #60a5fa;
+
+  font-size: 9px;
+}
+
+.quality-metric-card strong {
+  display: block;
+
+  margin-top: 8px;
+
+  color: #e8edf7;
+
+  font-size: 20px;
+}
+
+.quality-metric-card small {
+  display: block;
+
+  margin-top: 7px;
+
+  color: #536178;
+
+  font-size: 8px;
+}
+
+
+/* Progress bar */
+
+.quality-progress {
+  height: 5px;
+
+  margin-top: 10px;
+
+  border-radius: 10px;
+
+  background: #17243a;
+
+  overflow: hidden;
+}
+
+.quality-progress div {
+  height: 100%;
+
+  border-radius: inherit;
+
+  background:
+    linear-gradient(
+      90deg,
+      #2563eb,
+      #22c55e
+    );
+}
+
+
+/* =========================
+   ISSUE COUNTERS
+========================= */
+
+.quality-issues-card {
+  margin-bottom: 14px;
+}
+
+.quality-issue-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(4, 1fr);
+
+  gap: 10px;
+
+  padding: 14px;
+}
+
+.quality-issue-card {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+
+  padding: 12px;
+
+  border-radius: 9px;
+
+  border: 1px solid #1b2940;
+
+  background:
+    rgba(14, 23, 39, 0.7);
+}
+
+.quality-issue-icon {
+  width: 32px;
+  height: 32px;
+
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 8px;
+
+  color: #fbbf24;
+
+  background:
+    rgba(245, 158, 11, 0.1);
+}
+
+.quality-issue-card span {
+  display: block;
+
+  color: #67768d;
+
+  font-size: 8px;
+}
+
+.quality-issue-card strong {
+  display: block;
+
+  margin-top: 3px;
+
+  color: #e8edf7;
+
+  font-size: 16px;
+}
+
+
+/* =========================
+   QUALITY TABLE
+========================= */
+
+.quality-table-card {
+  overflow: hidden;
+}
+
+.quality-table-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+
+  color: #fbbf24;
+
+  font-size: 9px;
+}
+
+.quality-table {
+  padding: 8px 17px 14px;
+}
+
+.quality-table-row {
+  display: grid;
+
+  grid-template-columns:
+    0.8fr 1.6fr 1fr 0.8fr 0.7fr;
+
+  align-items: center;
+
+  min-height: 42px;
+
+  gap: 12px;
+
+  border-bottom:
+    1px solid #142036;
+
+  color: #8896aa;
+
+  font-size: 9px;
+}
+
+.quality-table-row:last-child {
+  border-bottom: 0;
+}
+
+.quality-table-head {
+  min-height: 30px;
+
+  color: #4e5e76;
+
+  font-size: 8px;
+
+  text-transform: uppercase;
+}
+
+.quality-table-row strong {
+  color: #cbd5e1;
+
+  font-size: 9px;
+}
+
+.quality-table-row code {
+  width: fit-content;
+
+  padding: 3px 6px;
+
+  border-radius: 5px;
+
+  background: #111b2c;
+
+  color: #7fa2d6;
+
+  font-size: 8px;
+}
+
+.quality-table-row small {
+  color: #52627b;
+
+  font-size: 8px;
+}
+
+
+/* =========================
+   SEVERITY
+========================= */
+
+.severity-badge {
+  width: fit-content;
+
+  padding: 4px 7px;
+
+  border-radius: 10px;
+
+  font-size: 8px;
+  font-weight: 600;
+
+  text-transform: capitalize;
+}
+
+.severity-critical {
+  color: #f87171;
+
+  background:
+    rgba(239, 68, 68, 0.1);
+
+  border:
+    1px solid rgba(239, 68, 68, 0.2);
+}
+
+.severity-warning {
+  color: #fbbf24;
+
+  background:
+    rgba(245, 158, 11, 0.1);
+
+  border:
+    1px solid rgba(245, 158, 11, 0.2);
+}
+
+.severity-info {
+  color: #60a5fa;
+
+  background:
+    rgba(37, 99, 235, 0.1);
+
+  border:
+    1px solid rgba(37, 99, 235, 0.2);
+}
+
+
+/* =========================
+   DATA QUALITY RESPONSIVE
+========================= */
+
+@media (max-width: 1100px) {
+
+  .quality-metrics-grid,
+  .quality-issue-grid {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+}
+
+
+@media (max-width: 800px) {
+
+  .data-quality-heading {
+    align-items: flex-start;
+    flex-direction: column;
+
+    gap: 12px;
+  }
+
+  .quality-metrics-grid,
+  .quality-issue-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .quality-table {
+    overflow-x: auto;
+  }
+
+  .quality-table-row {
+    min-width: 680px;
+  }
+
+}

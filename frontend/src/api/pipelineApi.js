@@ -62,18 +62,25 @@ const initialPipelineData = {
 
 export async function getPipelineStatus() {
 
-  if (API_BASE_URL) {
-    const response = await fetch(
-      `${API_BASE_URL}/pipeline/status`
-    );
+   if (API_BASE_URL) {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/pipeline/status`
+      );
 
-    if (!response.ok) {
-      throw new Error(
-        `Backend request failed: ${response.status}`
+      if (!response.ok) {
+        throw new Error(
+          `Backend request failed: ${response.status}`
+        );
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.warn(
+        "Backend unavailable. Using mock pipeline data.",
+        error
       );
     }
-
-    return await response.json();
   }
 
   await new Promise((resolve) =>
@@ -82,7 +89,6 @@ export async function getPipelineStatus() {
 
   return structuredClone(initialPipelineData);
 }
-
 
 export function simulatePipelineUpdate(data) {
   const updated = structuredClone(data);
@@ -96,11 +102,14 @@ export function simulatePipelineUpdate(data) {
       kafkaRate - Math.floor(Math.random() * 15)
     );
 
-  updated.services.kafka.eventsPerSecond = kafkaRate;
+  updated.services.kafka.eventsPerSecond =
+    kafkaRate;
 
-  updated.services.flink.processingRate = flinkRate;
+  updated.services.flink.processingRate =
+    flinkRate;
 
-  updated.metrics.eventsPerSecond = kafkaRate;
+  updated.metrics.eventsPerSecond =
+    kafkaRate;
 
   updated.metrics.pipelineLatency =
     42 + Math.floor(Math.random() * 12);
