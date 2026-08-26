@@ -2,13 +2,15 @@
 IceStream Flink Transaction Processor.
 
 Consumes transaction messages from Apache Kafka, parses JSON payloads,
-validates transaction data, calculates total_amount, and outputs processed transactions.
+validates transaction data, calculates total_amount, tracks processing metrics,
+and outputs processed transactions.
 """
 
 import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -35,6 +37,125 @@ REQUIRED_FIELDS = [
     "payment_method",
     "timestamp",
 ]
+
+
+class ProcessingMetrics:
+    """
+    Tracks basic stream processing metrics for the Flink job.
+
+    Metrics:
+    - total_records_received: Total input messages received from Kafka source.
+    - valid_records_processed: Records that successfully passed JSON parsing and schema validation.
+    - invalid_records: Records that failed JSON parsing or schema validation.
+    - processing_errors: Errors encountered during payload computation/processing.
+    - records_per_second: Rate of record processing per second since initialization.
+    """
+
+    def __init__(self) -> None:
+        self.total_records_received: int = 0
+        self.valid_records_processed: int = 0
+        self.invalid_records: int = 0
+        self.processing_errors: int = 0
+        self.start_time: float = time.time()
+
+    def record_received(self) -> None:
+        self.total_records_received += 1
+
+    def record_valid(self) -> None:
+        self.valid_records_processed += 1
+
+    def record_invalid(self) -> None:
+        self.invalid_records += 1
+
+    def record_error(self) -> None:
+        self.processing_errors += 1
+
+    @property
+    def records_per_second(self) -> float:
+        elapsed = time.time() - self.start_time
+        if elapsed <= 0:
+            return 0.0
+        return round(self.total_records_received / elapsed, 2)
+
+    def reset(self) -> None:
+        self.total_records_received = 0
+        self.valid_records_processed = 0
+        self.invalid_records = 0
+        self.processing_errors = 0
+        self.start_time = time.time()
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "total_records_received": self.total_records_received,
+            "valid_records_processed": self.valid_records_processed,
+            "invalid_records": self.invalid_records,
+            "processing_errors": self.processing_errors,
+            "records_per_second": self.records_per_second,
+        }
+
+
+try:
+    from pyflink.datastream.functions import RichMapFunction
+    _BASE_MAP_CLASS = RichMapFunction
+except ImportError:
+    _BASE_MAP_CLASS = object
+
+
+class TransactionProcessMapFunction(_BASE_MAP_CLASS):
+    """
+    PyFlink MapFunction that parses JSON, validates schema, calculates total_amount,
+    and updates processing metrics.
+    """
+
+    def __init__(self, metrics: Optional[ProcessingMetrics] = None) -> None:
+        if _BASE_MAP_CLASS is not object:
+            super().__init__()
+        self.metrics = metrics if metrics is not None else ProcessingMetrics()
+        self._flink_counter_received: Any = None
+        self._flink_counter_valid: Any = None
+        self._flink_counter_invalid: Any = None
+        self._flink_counter_errors: Any = None
+
+    def open(self, runtime_context: Any) -> None:
+        """Initializes Flink metrics counters when running within PyFlink runtime."""
+        try:
+            metric_group = runtime_context.get_metrics_group()
+            self._flink_counter_received = metric_group.counter("total_records_received")
+            self._flink_counter_valid = metric_group.counter("valid_records_processed")
+            self._flink_counter_invalid = metric_group.counter("invalid_records")
+            self._flink_counter_errors = metric_group.counter("processing_errors")
+        except Exception:
+            pass  # Standalone/test fallback
+
+    def map(self, raw_record: Any) -> Optional[str]:
+        """
+        Processes a raw input record string/bytes/dict.
+
+        Returns:
+            JSON string of processed transaction if valid, None if invalid or error.
+        """
+        self.metrics.record_received()
+        if self._flink_counter_received:
+            self._flink_counter_received.inc()
+
+        try:
+            processed, errors = parse_and_process_record(raw_record)
+            if processed is not None:
+                self.metrics.record_valid()
+                if self._flink_counter_valid:
+                    self._flink_counter_valid.inc()
+                return json.dumps(processed)
+            else:
+                self.metrics.record_invalid()
+                if self._flink_counter_invalid:
+                    self._flink_counter_invalid.inc()
+                return None
+        except Exception as exc:
+            self.metrics.record_error()
+            if self._flink_counter_errors:
+                self._flink_counter_errors.inc()
+            logger.error(f"Unexpected error processing record: {exc}")
+            return None
 
 
 def load_kafka_config(
@@ -213,30 +334,50 @@ def process_transaction(transaction: Dict[str, Any]) -> Dict[str, Any]:
     return processed
 
 
-def parse_and_process_record(raw_msg: Any) -> Tuple[Optional[Dict[str, Any]], List[str]]:
+def parse_and_process_record(
+    raw_msg: Any,
+    metrics: Optional[ProcessingMetrics] = None,
+) -> Tuple[Optional[Dict[str, Any]], List[str]]:
     """
     End-to-end single record processing pipeline:
     Parse JSON -> Validate -> Calculate total_amount -> Processed record.
 
     Args:
         raw_msg: Raw input message string/bytes or dict.
+        metrics: Optional ProcessingMetrics instance to update.
 
     Returns:
         Tuple of (processed_transaction_or_none, list_of_errors).
     """
+    if metrics:
+        metrics.record_received()
+
     parsed_ok, tx_dict, parse_err = parse_json(raw_msg)
     if not parsed_ok or tx_dict is None:
         err_msg = parse_err or "JSON parsing failed."
         logger.warning(f"Rejected malformed transaction: {err_msg}")
+        if metrics:
+            metrics.record_invalid()
         return None, [err_msg]
 
     valid, val_errors = validate_transaction(tx_dict)
     if not valid:
         logger.warning(f"Rejected invalid transaction order_id={tx_dict.get('order_id')}: {val_errors}")
+        if metrics:
+            metrics.record_invalid()
         return None, val_errors
 
-    processed = process_transaction(tx_dict)
-    return processed, []
+    try:
+        processed = process_transaction(tx_dict)
+        if metrics:
+            metrics.record_valid()
+        return processed, []
+    except Exception as exc:
+        err_msg = f"Calculation error: {str(exc)}"
+        logger.error(f"Processing error for order_id={tx_dict.get('order_id')}: {err_msg}")
+        if metrics:
+            metrics.record_error()
+        return None, [err_msg]
 
 
 def create_execution_environment():
@@ -279,8 +420,8 @@ def create_kafka_source(bootstrap_servers: str, topic: str):
 
 def create_output_sink():
     """
-    Returns output sink specification or handler description for Day 8 output stream.
-    For Day 8, output is logged/printed to standard output/log stream.
+    Returns output sink specification or handler description for output stream.
+    Output is logged/printed to standard output/log stream.
     """
     return "stdout_print_sink"
 
@@ -304,13 +445,8 @@ def main() -> None:
             source_name="Kafka Transactions Source"
         )
 
-        def flink_process_map(raw_record: str) -> Optional[str]:
-            processed, errors = parse_and_process_record(raw_record)
-            if processed:
-                return json.dumps(processed)
-            return None
-
-        processed_stream = ds.map(flink_process_map).filter(lambda x: x is not None)
+        processor = TransactionProcessMapFunction()
+        processed_stream = ds.map(processor).filter(lambda x: x is not None)
         processed_stream.print()
 
         env.execute("IceStream Flink Transaction Processor")
