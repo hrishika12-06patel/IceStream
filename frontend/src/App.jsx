@@ -42,6 +42,9 @@ import "./App.css";
 import DataQualityPanel
   from "./components/DataQualityPanel";
 
+import IncidentPanel
+  from "./components/IncidentPanel";
+
 /* -----------------------------
    Pipeline Custom Node
 ----------------------------- */
@@ -1112,9 +1115,9 @@ function App() {
 
           </div>
 
-          {/* Data Quality */}
-
           <DataQualityPanel />
+
+          <IncidentPanel />
 
         </main>
 
