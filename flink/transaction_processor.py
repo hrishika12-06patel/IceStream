@@ -418,6 +418,32 @@ def create_kafka_source(bootstrap_servers: str, topic: str):
         raise RuntimeError("PyFlink Kafka connector dependencies not available.") from exc
 
 
+def load_iceberg_config() -> Any:
+    """
+    Loads Iceberg configuration for downstream lakehouse storage.
+    """
+    try:
+        from iceberg.iceberg_config import IcebergConfig
+        return IcebergConfig.from_env()
+    except Exception as exc:
+        logger.warning(f"Could not load Iceberg configuration: {exc}")
+        return None
+
+
+def create_iceberg_sink_config() -> Dict[str, Any]:
+    """
+    Returns Iceberg sink and catalog configuration dictionary for Flink integration.
+    """
+    config = load_iceberg_config()
+    if config:
+        return {
+            "catalog_name": config.catalog,
+            "catalog_properties": config.get_catalog_properties(),
+            "full_table_name": config.full_table_name,
+        }
+    return {}
+
+
 def create_output_sink():
     """
     Returns output sink specification or handler description for output stream.
