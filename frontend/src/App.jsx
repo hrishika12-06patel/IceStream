@@ -45,6 +45,9 @@ import DataQualityPanel
 import IncidentPanel
   from "./components/IncidentPanel";
 
+import LakehousePanel
+  from "./components/LakehousePanel";
+
 /* -----------------------------
    Pipeline Custom Node
 ----------------------------- */
@@ -1118,6 +1121,8 @@ function App() {
           <DataQualityPanel />
 
           <IncidentPanel />
+
+          <LakehousePanel />
 
         </main>
 
