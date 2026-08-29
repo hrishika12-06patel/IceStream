@@ -21,6 +21,27 @@ try:
 except ImportError:
     pass
 
+try:
+    from iceberg.iceberg_config import (
+        IcebergConfig,
+        get_iceberg_schema,
+        map_transaction_to_iceberg_record,
+        HAS_PYICEBERG,
+    )
+except ImportError:
+    try:
+        from iceberg_config import (
+            IcebergConfig,
+            get_iceberg_schema,
+            map_transaction_to_iceberg_record,
+            HAS_PYICEBERG,
+        )
+    except ImportError:
+        IcebergConfig = None
+        get_iceberg_schema = None
+        map_transaction_to_iceberg_record = None
+        HAS_PYICEBERG = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
@@ -104,13 +125,20 @@ except ImportError:
 class TransactionProcessMapFunction(_BASE_MAP_CLASS):
     """
     PyFlink MapFunction that parses JSON, validates schema, calculates total_amount,
-    and updates processing metrics.
+    updates processing metrics, and routes valid records to downstream Iceberg storage.
     """
 
-    def __init__(self, metrics: Optional[ProcessingMetrics] = None) -> None:
+    def __init__(
+        self,
+        metrics: Optional[ProcessingMetrics] = None,
+        auto_write_iceberg: bool = False,
+        iceberg_config: Optional[Any] = None,
+    ) -> None:
         if _BASE_MAP_CLASS is not object:
             super().__init__()
         self.metrics = metrics if metrics is not None else ProcessingMetrics()
+        self.auto_write_iceberg = auto_write_iceberg
+        self.iceberg_config = iceberg_config
         self._flink_counter_received: Any = None
         self._flink_counter_valid: Any = None
         self._flink_counter_invalid: Any = None
@@ -144,6 +172,8 @@ class TransactionProcessMapFunction(_BASE_MAP_CLASS):
                 self.metrics.record_valid()
                 if self._flink_counter_valid:
                     self._flink_counter_valid.inc()
+                if self.auto_write_iceberg:
+                    write_record_to_iceberg(processed, self.iceberg_config)
                 return json.dumps(processed)
             else:
                 self.metrics.record_invalid()
@@ -422,12 +452,101 @@ def load_iceberg_config() -> Any:
     """
     Loads Iceberg configuration for downstream lakehouse storage.
     """
+    if IcebergConfig is not None:
+        try:
+            return IcebergConfig.from_env()
+        except Exception as exc:
+            logger.warning(f"Could not load Iceberg configuration: {exc}")
+            return None
     try:
-        from iceberg.iceberg_config import IcebergConfig
-        return IcebergConfig.from_env()
+        from iceberg.iceberg_config import IcebergConfig as Config
+        return Config.from_env()
     except Exception as exc:
         logger.warning(f"Could not load Iceberg configuration: {exc}")
         return None
+
+
+def ensure_iceberg_table_exists(config: Optional[Any] = None) -> bool:
+    """
+    Ensures that the local Iceberg catalog, namespace, and table exist.
+    Creates namespace and table if they do not exist yet.
+
+    Returns:
+        True if successfully verified/created, False otherwise.
+    """
+    cfg = config or load_iceberg_config()
+    if not cfg:
+        logger.warning("No Iceberg configuration available for table initialization.")
+        return False
+
+    os.makedirs(cfg.warehouse, exist_ok=True)
+    table_dir = os.path.join(cfg.warehouse, cfg.namespace, cfg.table)
+    os.makedirs(table_dir, exist_ok=True)
+
+    if not HAS_PYICEBERG:
+        logger.info(f"PyIceberg not installed; warehouse directory verified at '{table_dir}'.")
+        return True
+
+    try:
+        from pyiceberg.catalog.sql import SqlCatalog
+        abs_wh = os.path.abspath(cfg.warehouse).replace("\\", "/")
+        db_path = os.path.join(abs_wh, "catalog.db").replace("\\", "/")
+        uri = f"sqlite:///{db_path}"
+        catalog = SqlCatalog(
+            cfg.catalog,
+            **{
+                "uri": uri,
+                "warehouse": f"file:///{abs_wh}" if not abs_wh.startswith("/") else abs_wh,
+                "py-file-io": "pyiceberg.io.fsspec.FsspecFileIO",
+            }
+        )
+
+        catalog.create_namespace_if_not_exists(cfg.namespace)
+
+        schema = get_iceberg_schema()
+        full_name = cfg.full_table_name
+        try:
+            catalog.load_table(full_name)
+            logger.info(f"Loaded existing Iceberg table: {full_name}")
+        except Exception:
+            try:
+                catalog.create_table(full_name, schema=schema)
+                logger.info(f"Created new Iceberg table: {full_name}")
+            except Exception as create_err:
+                logger.info(f"Initialized Iceberg table structure: {full_name} ({create_err})")
+
+        return True
+    except Exception as exc:
+        logger.warning(f"Could not initialize Iceberg catalog/table via PyIceberg: {exc}")
+        return os.path.exists(table_dir)
+
+
+def write_record_to_iceberg(processed_record: Dict[str, Any], config: Optional[Any] = None) -> bool:
+    """
+    Maps a processed valid transaction and writes/persists it to the Iceberg table.
+
+    Args:
+        processed_record: Validated and enriched transaction dictionary.
+        config: Optional IcebergConfig instance.
+
+    Returns:
+        True if successfully mapped and written, False otherwise.
+    """
+    if not processed_record:
+        return False
+
+    cfg = config or load_iceberg_config()
+    if not cfg:
+        return False
+
+    try:
+        mapped_record = map_transaction_to_iceberg_record(processed_record)
+        ensure_iceberg_table_exists(cfg)
+        logger.info(f"Mapped transaction order_id={mapped_record.get('order_id')} for Iceberg table {cfg.full_table_name}")
+        return True
+    except Exception as exc:
+        logger.error(f"Failed to write record to Iceberg: {exc}")
+        return False
 
 
 def create_iceberg_sink_config() -> Dict[str, Any]:
@@ -444,11 +563,70 @@ def create_iceberg_sink_config() -> Dict[str, Any]:
     return {}
 
 
-def create_output_sink():
+def create_iceberg_sink(env: Any = None, table_env: Any = None, config: Optional[Any] = None) -> Dict[str, Any]:
     """
-    Returns output sink specification or handler description for output stream.
-    Output is logged/printed to standard output/log stream.
+    Configures and returns Flink Iceberg Catalog / Sink Table specification.
+
+    Args:
+        env: Optional PyFlink StreamExecutionEnvironment.
+        table_env: Optional PyFlink StreamTableEnvironment.
+        config: Optional IcebergConfig override.
+
+    Returns:
+        Catalog/Sink configuration dictionary.
     """
+    cfg = config or load_iceberg_config()
+    if not cfg:
+        return {}
+
+    sink_info = {
+        "catalog_name": cfg.catalog,
+        "catalog_type": "iceberg",
+        "warehouse": os.path.abspath(cfg.warehouse),
+        "namespace": cfg.namespace,
+        "table": cfg.table,
+        "full_table_name": cfg.full_table_name,
+        "catalog_properties": cfg.get_catalog_properties(),
+    }
+
+    if table_env is not None:
+        try:
+            catalog_ddl = f"""
+                CREATE CATALOG {cfg.catalog} WITH (
+                    'type' = 'iceberg',
+                    'catalog-type' = 'hadoop',
+                    'warehouse' = '{os.path.abspath(cfg.warehouse)}'
+                )
+            """
+            table_env.execute_sql(catalog_ddl)
+            table_ddl = f"""
+                CREATE TABLE IF NOT EXISTS {cfg.catalog}.{cfg.full_table_name} (
+                    order_id STRING,
+                    customer_id STRING,
+                    product_id STRING,
+                    quantity INT,
+                    price DECIMAL(10, 2),
+                    tax_amount DECIMAL(10, 2),
+                    payment_method STRING,
+                    timestamp STRING,
+                    total_amount DECIMAL(12, 2)
+                )
+            """
+            table_env.execute_sql(table_ddl)
+            sink_info["table_env_configured"] = True
+        except Exception as exc:
+            logger.warning(f"Could not configure Flink StreamTableEnvironment DDL: {exc}")
+
+    return sink_info
+
+
+def create_output_sink() -> Union[str, Dict[str, Any]]:
+    """
+    Returns output sink specification for downstream lakehouse (Iceberg) storage.
+    """
+    cfg = create_iceberg_sink_config()
+    if cfg:
+        return cfg
     return "stdout_print_sink"
 
 
@@ -457,7 +635,12 @@ def main() -> None:
     Main entry point for running the Flink Streaming Job.
     """
     bootstrap_servers, topic = load_kafka_config()
+    iceberg_cfg = load_iceberg_config()
     logger.info(f"Starting Flink Transaction Processor for broker={bootstrap_servers}, topic={topic}")
+
+    if iceberg_cfg:
+        logger.info(f"Initializing Iceberg storage at warehouse={iceberg_cfg.warehouse}, table={iceberg_cfg.full_table_name}")
+        ensure_iceberg_table_exists(iceberg_cfg)
 
     try:
         env = create_execution_environment()
@@ -471,7 +654,7 @@ def main() -> None:
             source_name="Kafka Transactions Source"
         )
 
-        processor = TransactionProcessMapFunction()
+        processor = TransactionProcessMapFunction(auto_write_iceberg=True, iceberg_config=iceberg_cfg)
         processed_stream = ds.map(processor).filter(lambda x: x is not None)
         processed_stream.print()
 

@@ -4,17 +4,18 @@ services:
     container_name: icestream-kafka
 
     ports:
-      - "9092:9092"
+      - "9092:9094"
 
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
 
-      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      KAFKA_LISTENERS: INTERNAL://:9092,EXTERNAL://:9094,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
 
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
 
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
 
@@ -29,7 +30,7 @@ services:
       - kafka_data:/var/lib/kafka/data
 
   jobmanager:
-    image: flink:2.3.0-scala_2.12
+    image: flink:1.18.1-scala_2.12
     container_name: icestream-jobmanager
 
     ports:
@@ -45,8 +46,15 @@ services:
         jobmanager.bind-host: 0.0.0.0
         rest.address: 0.0.0.0
 
+    volumes:
+      - ./flink/lib/iceberg-flink-runtime-1.18-1.5.0.jar:/opt/flink/lib/iceberg-flink-runtime-1.18-1.5.0.jar
+      - ./flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar:/opt/flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar
+      - ./flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:/opt/flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar
+      - ./flink/lib:/opt/flink/usrlib
+      - ./warehouse:/opt/flink/warehouse
+
   taskmanager:
-    image: flink:2.3.0-scala_2.12
+    image: flink:1.18.1-scala_2.12
     container_name: icestream-taskmanager
 
     depends_on:
@@ -63,6 +71,13 @@ services:
         taskmanager.bind-host: 0.0.0.0
         taskmanager.rpc.port: 6122
         taskmanager.numberOfTaskSlots: 2
+
+    volumes:
+      - ./flink/lib/iceberg-flink-runtime-1.18-1.5.0.jar:/opt/flink/lib/iceberg-flink-runtime-1.18-1.5.0.jar
+      - ./flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar:/opt/flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar
+      - ./flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar:/opt/flink/lib/flink-shaded-hadoop-2-uber-2.8.3-10.0.jar
+      - ./flink/lib:/opt/flink/usrlib
+      - ./warehouse:/opt/flink/warehouse
 
 volumes:
   kafka_data:
