@@ -2818,3 +2818,209 @@
   }
 
 }
+
+/* =========================
+   PIPELINE VIEW
+========================= */
+
+.pipeline-view-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 12px;
+
+  margin-top: 14px;
+}
+
+
+@media (max-width: 1100px) {
+  .pipeline-view-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================
+   APP VIEWS
+========================= */
+
+.view-container {
+  width: 100%;
+}
+
+.view-heading {
+  margin-bottom: 22px;
+}
+
+.view-heading h2 {
+  margin: 0;
+
+  color: #f4f7fb;
+
+  font-size: 25px;
+  font-weight: 650;
+
+  letter-spacing: -0.5px;
+}
+
+.view-heading p {
+  margin: 6px 0 0;
+
+  color: #617089;
+
+  font-size: 11px;
+}
+
+
+/* =========================
+   SETTINGS VIEW
+========================= */
+
+.settings-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(3, 1fr);
+
+  gap: 12px;
+}
+
+.settings-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+
+  padding: 16px;
+}
+
+.settings-icon {
+  width: 36px;
+  height: 36px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 8px;
+
+  color: #60a5fa;
+
+  background:
+    rgba(37, 99, 235, 0.1);
+}
+
+.settings-card span {
+  display: block;
+
+  color: #617089;
+
+  font-size: 8px;
+}
+
+.settings-card strong {
+  display: block;
+
+  margin-top: 3px;
+
+  color: #e8edf7;
+
+  font-size: 14px;
+}
+
+.settings-card small {
+  display: block;
+
+  margin-top: 4px;
+
+  color: #52627b;
+
+  font-size: 8px;
+}
+
+
+/* =========================
+   FULL ALERT VIEW
+========================= */
+
+.full-alert-list {
+  padding: 12px 15px 15px;
+}
+
+.full-alert-item {
+  display: flex;
+  gap: 12px;
+
+  padding: 14px;
+
+  margin-bottom: 8px;
+
+  border-radius: 9px;
+
+  border: 1px solid #1b2940;
+
+  background:
+    rgba(14, 23, 39, 0.7);
+}
+
+.full-alert-item:last-child {
+  margin-bottom: 0;
+}
+
+.full-alert-item strong {
+  display: block;
+
+  color: #cbd5e1;
+
+  font-size: 10px;
+}
+
+.full-alert-item p {
+  margin: 4px 0;
+
+  color: #617089;
+
+  font-size: 9px;
+}
+
+.full-alert-item small {
+  color: #46566d;
+
+  font-size: 8px;
+}
+
+
+/* =========================
+   METRICS VIEW
+========================= */
+
+.standalone-metrics-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(3, 1fr);
+
+  gap: 12px;
+}
+
+
+/* =========================
+   RESPONSIVE VIEWS
+========================= */
+
+@media (max-width: 1100px) {
+
+  .settings-grid,
+  .standalone-metrics-grid {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+}
+
+
+@media (max-width: 800px) {
+
+  .settings-grid,
+  .standalone-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+}
