@@ -48,6 +48,24 @@ import IncidentPanel
 import LakehousePanel
   from "./components/LakehousePanel";
 
+import DataQualityView
+  from "./views/DataQualityView";
+
+import IncidentsView
+  from "./views/IncidentsView";
+
+import LakehouseView
+  from "./views/LakehouseView";
+
+import MetricsView
+  from "./views/MetricsView";
+
+import AlertsView
+  from "./views/AlertsView";
+
+import SettingsView
+  from "./views/SettingsView";
+
 /* -----------------------------
    Pipeline Custom Node
 ----------------------------- */
@@ -187,7 +205,11 @@ const initialEdges = [
    Sidebar
 ----------------------------- */
 
-function Sidebar({ pipelineHealth }) {
+function Sidebar({
+  activeView,
+  onNavigate,
+  pipelineHealth,
+}) {
   const healthy =
     pipelineHealth === "healthy";
 
@@ -212,23 +234,59 @@ function Sidebar({ pipelineHealth }) {
 
       <nav className="navigation">
 
-        <div className="nav-item active">
+        <div 
+          className={
+            activeView === "dashboard"
+              ? "nav-item active"
+              : "nav-item"
+          }
+          onClick={() =>
+            onNavigate("dashboard")
+          }
+        >
           <LayoutDashboard size={17} />
           <span>Dashboard</span>
         </div>
 
-        <div className="nav-item">
+        <div 
+          className={
+            activeView === "pipeline"
+              ? "nav-item active"
+              : "nav-item"
+          }
+          onClick={() =>
+            onNavigate("pipeline")
+          }
+        >
           <Network size={17} />
           <span>Pipeline</span>
           <span className="nav-badge">LIVE</span>
         </div>
 
-        <div className="nav-item">
+        <div 
+          className={
+            activeView === "data-quality"
+              ? "nav-item active"
+              : "nav-item"
+          }
+          onClick={() =>
+            onNavigate("data-quality")
+          }
+        >
           <ShieldCheck size={17} />
           <span>Data Quality</span>
         </div>
 
-        <div className="nav-item">
+        <div 
+          className={
+            activeView === "alerts"
+            ? "nav-item active"
+            : "nav-item"
+          }
+          onClick={() =>
+            onNavigate("alerts")
+          }
+        >
           <Bell size={17} />
           <span>Alerts</span>
           <span className="alert-badge">2</span>
@@ -241,17 +299,44 @@ function Sidebar({ pipelineHealth }) {
           INFRASTRUCTURE
         </div>
 
-        <div className="nav-item">
+        <div 
+          className={
+            activeView === "pipeline"
+              ? "nav-item active"
+              : "nav-item"
+          }
+          onClick={() =>
+            onNavigate("pipeline")
+          }
+        >
           <GitBranch size={16} />
           <span>Pipeline Nodes</span>
         </div>
 
-        <div className="nav-item">
+        <div 
+          className={
+            activeView === "lakehouse"
+              ? "nav-item active"
+              : "nav-item"
+        }
+          onClick={() =>
+            onNavigate("lakehouse")
+          }
+        >
           <Database size={16} />
           <span>Lakehouse</span>
         </div>
 
-        <div className="nav-item">
+        <div 
+          className={
+            activeView === "metrics"
+              ? "nav-item active"
+              : "nav-item"
+          }
+          onClick={() =>
+            onNavigate("metrics")
+          }
+        >
           <Gauge size={16} />
           <span>Metrics</span>
         </div>
@@ -262,12 +347,30 @@ function Sidebar({ pipelineHealth }) {
           MONITORING
         </div>
 
-        <div className="nav-item">
+        <div 
+          className={
+            activeView === "incidents"
+              ? "nav-item active"
+              : "nav-item"
+          }
+          onClick={() =>
+            onNavigate("incidents")
+          }
+        >
           <MessageSquareWarning size={16} />
           <span>Issues</span>
         </div>
 
-        <div className="nav-item">
+        <div 
+          className={
+            activeView === "settings"
+              ? "nav-item active"
+              : "nav-item"
+          }
+          onClick={() =>
+            onNavigate("settings")
+          }
+        >
           <Settings size={16} />
           <span>Settings</span>
         </div>
@@ -306,11 +409,61 @@ function Sidebar({ pipelineHealth }) {
    Header
 ----------------------------- */
 
-function Header({ pipelineHealth }) {
+function Header({
+  activeView,
+  pipelineHealth
+}) {
   const healthy =
     pipelineHealth === "healthy";
 
-  return (
+  const viewLabels = {
+  dashboard: {
+    parent: "Dashboard",
+    current: "Overview",
+  },
+
+  pipeline: {
+    parent: "Pipeline",
+    current: "Live Pipeline",
+  },
+
+  "data-quality": {
+    parent: "Data Quality",
+    current: "Monitoring",
+  },
+
+  alerts: {
+    parent: "Monitoring",
+    current: "Alerts",
+  },
+
+  lakehouse: {
+    parent: "Infrastructure",
+    current: "Lakehouse",
+  },
+
+  metrics: {
+    parent: "Monitoring",
+    current: "Metrics",
+  },
+
+  incidents: {
+    parent: "Monitoring",
+    current: "Issues",
+  },
+
+  settings: {
+    parent: "Configuration",
+    current: "Settings",
+  },
+};
+
+const currentView =
+  viewLabels[activeView] ||
+  viewLabels.dashboard;
+
+
+return (
     <header className="topbar">
 
       <div className="mobile-menu">
@@ -318,9 +471,9 @@ function Header({ pipelineHealth }) {
       </div>
 
       <div className="breadcrumbs">
-        <span>Dashboard</span>
+        <span>{currentView.parent}</span>
         <span>/</span>
-        <strong>Pipeline Overview</strong>
+        <strong>{currentView.current}</strong>
       </div>
 
       <div className="topbar-actions">
@@ -631,6 +784,9 @@ function App() {
   const [edges, setEdges, onEdgesChange] =
     useEdgesState(initialEdges);
 
+  const [activeView, setActiveView] =
+  useState("dashboard");
+
   const loadPipelineData = useCallback(
     async () => {
 
@@ -756,33 +912,25 @@ function App() {
 
   useEffect(() => {
 
-    if (!pipelineData) {
-      return;
-    }
+  const interval = setInterval(() => {
+
+    setPipelineData((current) => {
+
+      if (!current) {
+        return current;
+      }
+
+      return simulatePipelineUpdate(current);
+
+    });
+
+  }, 5000);
 
 
-    const interval =
-      setInterval(() => {
+  return () =>
+    clearInterval(interval);
 
-        setPipelineData((current) => {
-
-          if (!current) {
-            return current;
-          }
-
-          return simulatePipelineUpdate(
-            current
-          );
-
-        });
-
-      }, 5000);
-
-
-    return () =>
-      clearInterval(interval);
-
-  }, []);
+}, []);
 
 
   /* =========================
@@ -875,71 +1023,302 @@ function App() {
       ? "offline"
       : "healthy";
 
+function renderActiveView() {
+  switch (activeView) {
+
+    case "data-quality":
+      return <DataQualityView />;
+
+    case "alerts":
+      return <AlertsView />;
+
+    case "lakehouse":
+      return <LakehouseView />;
+
+    case "metrics":
+      return <MetricsView />;
+
+    case "incidents":
+      return <IncidentsView />;
+
+    case "settings":
+      return <SettingsView />;
+
+    default:
+      return null;
+  }
+}
 
   return (
     <div className="app">
 
       <Sidebar
-        pipelineHealth={
-          pipelineHealth
-        }
+        activeView={activeView}
+        onNavigate={setActiveView}
+        pipelineHealth={pipelineHealth}
       />
 
 
       <div className="main">
 
         <Header
-          pipelineHealth={
-            pipelineHealth
-          }
+          activeView={activeView}
+          pipelineHealth={pipelineHealth}
         />
 
 
         <main className="content">
 
+        {activeView === "dashboard" && (
+          <>
 
-          {/* =========================
-              PAGE HEADING
-          ========================= */}
+            {/* =========================
+                PAGE HEADING
+            ========================= */}
+
+            <div className="page-heading">
+
+              <div>
+
+                <div className="eyebrow">
+                  REAL-TIME OBSERVABILITY
+                </div>
+
+                <h2>
+                  Pipeline overview
+                </h2>
+
+                <p>
+                  Monitor your streaming data pipeline
+                  from ingest to lakehouse storage.
+                </p>
+
+              </div>
+
+
+              <button className="primary-button">
+
+                <Play size={15} />
+
+                Live pipeline
+
+              </button>
+
+            </div>
+
+
+            {/* =========================
+                ERROR BANNER
+            ========================= */}
+
+            {error && (
+
+              <div className="backend-error">
+
+                <Bell size={15} />
+
+                <span>
+                  {error}
+                </span>
+
+              </div>
+
+            )}
+
+
+            {/* =========================
+                PIPELINE
+            ========================= */}
+
+            <section className="dashboard-card pipeline-card">
+
+              <div className="card-header">
+
+                <div>
+
+                  <h3>
+                    Streaming data pipeline
+                  </h3>
+
+                  <span>
+                    Ingest → Process → Serve
+                  </span>
+
+                </div>
+
+
+                <div
+                  className={`pipeline-status ${
+                    error
+                      ? "pipeline-status-error"
+                      : ""
+                  }`}
+                >
+
+                  <span></span>
+
+                  {error
+                    ? "Unavailable"
+                    : "Healthy"}
+
+                </div>
+
+              </div>
+
+
+              <div className="flow-container">
+
+                <ReactFlow
+                  nodes={nodes}
+                  edges={edges}
+                  nodeTypes={nodeTypes}
+                  onNodesChange={onNodesChange}
+                  onEdgesChange={onEdgesChange}
+                  onConnect={onConnect}
+                  fitView
+                  fitViewOptions={{
+                    padding: 0.2,
+                  }}
+                  proOptions={{
+                    hideAttribution: true,
+                  }}
+                >
+
+                  <Background
+                    gap={24}
+                    size={1}
+                    color="#1b2942"
+                  />
+
+                  <Controls />
+
+                  <MiniMap
+                    nodeColor={(node) => {
+
+                      if (
+                        node.data?.variant === "kafka"
+                      ) {
+                        return "#3b82f6";
+                      }
+
+                      if (
+                        node.data?.variant === "flink"
+                      ) {
+                        return "#8b5cf6";
+                      }
+
+                      return "#22c55e";
+
+                    }}
+                  />
+
+                </ReactFlow>
+
+              </div>
+
+            </section>
+
+
+            {/* =========================
+                METRICS
+            ========================= */}
+
+            <div className="metrics-grid">
+
+              <MetricCard
+                icon={<Zap size={19} />}
+                label="Events / second"
+                value={
+                  metrics.eventsPerSecond.toLocaleString()
+                }
+                change="Live"
+              />
+
+
+              <MetricCard
+                icon={<Activity size={19} />}
+                label="Pipeline latency"
+                value={`${metrics.pipelineLatency} ms`}
+                change="Live"
+              />
+
+
+              <MetricCard
+                icon={<ShieldCheck size={19} />}
+                label="Data quality"
+                value={`${metrics.dataQuality}%`}
+                change="Live"
+              />
+
+
+              <MetricCard
+                icon={<Boxes size={19} />}
+                label="Records processed"
+                value={
+                  metrics.recordsProcessed.toLocaleString()
+                }
+                change="Live"
+              />
+
+            </div>
+
+
+            {/* =========================
+                LOWER DASHBOARD
+            ========================= */}
+
+            <div className="lower-grid">
+
+              <ActivePipelines
+                pipelineData={pipelineData}
+              />
+
+              <LatencyCard
+                pipelineData={pipelineData}
+              />
+
+              <RecentAlerts
+                alerts={pipelineData?.alerts || []}
+              />
+
+            </div>
+
+          </>
+        )}
+
+
+        {/* =========================
+            PIPELINE VIEW
+        ========================= */}
+
+        {activeView === "pipeline" && (
+        <>
 
           <div className="page-heading">
 
             <div>
 
               <div className="eyebrow">
-                REAL-TIME OBSERVABILITY
+                LIVE STREAMING PIPELINE
               </div>
 
               <h2>
-                Pipeline overview
+                Pipeline
               </h2>
 
               <p>
-                Monitor your streaming data
-                pipeline from ingest to
-                lakehouse storage.
+                Monitor Kafka, Flink and Iceberg
+                processing stages in real time.
               </p>
 
             </div>
 
-
-            <button className="primary-button">
-
-              <Play size={15} />
-
-              Live pipeline
-
-            </button>
-
           </div>
 
 
-          {/* =========================
-              ERROR BANNER
-          ========================= */}
+          {/* Error banner */}
 
           {error && (
-
             <div className="backend-error">
 
               <Bell size={15} />
@@ -949,13 +1328,10 @@ function App() {
               </span>
 
             </div>
-
           )}
 
 
-          {/* =========================
-              PIPELINE
-          ========================= */}
+          {/* Pipeline */}
 
           <section className="dashboard-card pipeline-card">
 
@@ -1023,15 +1399,13 @@ function App() {
                   nodeColor={(node) => {
 
                     if (
-                      node.data?.variant ===
-                      "kafka"
+                      node.data?.variant === "kafka"
                     ) {
                       return "#3b82f6";
                     }
 
                     if (
-                      node.data?.variant ===
-                      "flink"
+                      node.data?.variant === "flink"
                     ) {
                       return "#8b5cf6";
                     }
@@ -1048,17 +1422,17 @@ function App() {
           </section>
 
 
-          {/* =========================
-              METRICS
-          ========================= */}
+          {/* Pipeline metrics */}
 
           <div className="metrics-grid">
 
             <MetricCard
               icon={<Zap size={19} />}
-              label="Events / second"
+              label="Kafka events / second"
               value={
-                metrics.eventsPerSecond.toLocaleString()
+                pipelineData.services.kafka
+                  .eventsPerSecond
+                  .toLocaleString()
               }
               change="Live"
             />
@@ -1066,25 +1440,33 @@ function App() {
 
             <MetricCard
               icon={<Activity size={19} />}
-              label="Pipeline latency"
-              value={`${metrics.pipelineLatency} ms`}
-              change="Live"
-            />
-
-
-            <MetricCard
-              icon={<ShieldCheck size={19} />}
-              label="Data quality"
-              value={`${metrics.dataQuality}%`}
-              change="Live"
-            />
-
-
-            <MetricCard
-              icon={<Boxes size={19} />}
-              label="Records processed"
+              label="Flink processing rate"
               value={
-                metrics.recordsProcessed.toLocaleString()
+                `${pipelineData.services.flink
+                  .processingRate
+                  .toLocaleString()}/s`
+              }
+              change="Live"
+            />
+
+
+            <MetricCard
+              icon={<Gauge size={19} />}
+              label="Pipeline latency"
+              value={
+                `${metrics.pipelineLatency} ms`
+              }
+              change="Live"
+            />
+
+
+            <MetricCard
+              icon={<Database size={19} />}
+              label="Iceberg records"
+              value={
+                pipelineData.services.iceberg
+                  .recordsStored
+                  .toLocaleString()
               }
               change="Live"
             />
@@ -1092,39 +1474,29 @@ function App() {
           </div>
 
 
-          {/* =========================
-              LOWER DASHBOARD
-          ========================= */}
+          {/* Active pipeline + latency */}
 
-          <div className="lower-grid">
+          <div className="pipeline-view-grid">
 
             <ActivePipelines
-              pipelineData={
-                pipelineData
-              }
+              pipelineData={pipelineData}
             />
-
 
             <LatencyCard
-              pipelineData={
-                pipelineData
-              }
-            />
-
-
-            <RecentAlerts
-              alerts={pipelineData?.alerts || []}
+              pipelineData={pipelineData}
             />
 
           </div>
 
-          <DataQualityPanel />
+        </>
+      )}
 
-          <IncidentPanel />
+      {activeView !== "dashboard" &&
+       activeView !== "pipeline" &&
+       renderActiveView()}
 
-          <LakehousePanel />
-
-        </main>
+    </main>   
+      
 
 
         {/* =========================
