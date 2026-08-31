@@ -1,124 +1,222 @@
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || null;
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://127.0.0.1:8000";
 
-const initialPipelineData = {
-  services: {
-    kafka: {
-      name: "Kafka",
-      status: "healthy",
-      eventsPerSecond: 1240,
-      latency: 8,
-    },
 
-    flink: {
-      name: "Flink",
-      status: "healthy",
-      processingRate: 1238,
-      latency: 16,
-    },
-
-    iceberg: {
-      name: "Iceberg",
-      status: "healthy",
-      recordsStored: 1200000,
-      latency: 23,
-    },
-  },
-
-  metrics: {
-    eventsPerSecond: 1240,
-    pipelineLatency: 47,
-    dataQuality: 99.8,
-    recordsProcessed: 1200000,
-  },
-
-  alerts: [
+async function apiRequest(endpoint) {
+  const response = await fetch(
+    `${API_BASE_URL}${endpoint}`,
     {
-      id: 1,
-      type: "warning",
-      title: "Consumer lag detected",
-      message: "Kafka consumer lag increased slightly.",
-      time: "2 min ago",
-    },
-
-    {
-      id: 2,
-      type: "info",
-      title: "Pipeline processing normally",
-      message: "Flink processing rate is stable.",
-      time: "8 min ago",
-    },
-
-    {
-      id: 3,
-      type: "success",
-      title: "Iceberg write completed",
-      message: "Latest batch stored successfully.",
-      time: "14 min ago",
-    },
-  ],
-};
-
-
-export async function getPipelineStatus() {
-
-   if (API_BASE_URL) {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/pipeline/status`
-      );
-
-      if (!response.ok) {
-        throw new Error(
-          `Backend request failed: ${response.status}`
-        );
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.warn(
-        "Backend unavailable. Using mock pipeline data.",
-        error
-      );
+      headers: {
+        Accept: "application/json",
+      },
     }
-  }
-
-  await new Promise((resolve) =>
-    setTimeout(resolve, 300)
   );
 
-  return structuredClone(initialPipelineData);
+  if (!response.ok) {
+    throw new Error(
+      `API request failed: ${response.status}`
+    );
+  }
+
+  return response.json();
 }
 
-export function simulatePipelineUpdate(data) {
-  const updated = structuredClone(data);
 
-  const kafkaRate =
-    1180 + Math.floor(Math.random() * 180);
+/* =========================
+   HEALTH
+========================= */
 
-  const flinkRate =
-    Math.max(
-      1100,
-      kafkaRate - Math.floor(Math.random() * 15)
-    );
+export function getBackendHealth() {
+  return apiRequest("/health");
+}
 
-  updated.services.kafka.eventsPerSecond =
-    kafkaRate;
 
-  updated.services.flink.processingRate =
-    flinkRate;
+/* =========================
+   RAW API FUNCTIONS
+========================= */
 
-  updated.metrics.eventsPerSecond =
-    kafkaRate;
+export function getPipelineStatusRaw() {
+  return apiRequest(
+    "/api/pipeline/status"
+  );
+}
 
-  updated.metrics.pipelineLatency =
-    42 + Math.floor(Math.random() * 12);
 
-  updated.metrics.recordsProcessed +=
-    Math.floor(Math.random() * 500);
+export function getPipelineMetrics() {
+  return apiRequest(
+    "/api/pipeline/metrics"
+  );
+}
 
-  updated.services.iceberg.recordsStored =
-    updated.metrics.recordsProcessed;
 
-  return updated;
+export function getDataQuality() {
+  return apiRequest(
+    "/api/data-quality"
+  );
+}
+
+
+export function getIncidents() {
+  return apiRequest(
+    "/api/incidents"
+  );
+}
+
+
+export function getLakehouseStatus() {
+  return apiRequest(
+    "/api/lakehouse"
+  );
+}
+
+
+/* =========================
+   NORMALISED PIPELINE DATA
+========================= */
+
+export async function getPipelineStatus() {
+  const [
+    status,
+    metrics,
+    quality,
+    incidents,
+    lakehouse,
+  ] = await Promise.all([
+    getPipelineStatusRaw(),
+    getPipelineMetrics(),
+    getDataQuality(),
+    getIncidents(),
+    getLakehouseStatus(),
+  ]);
+
+
+  return {
+    overallStatus:
+      status.overall_status,
+
+    services: {
+      kafka: {
+        name: "Kafka",
+
+        status:
+          status.components?.kafka?.status ??
+          "unknown",
+
+        eventsPerSecond:
+          metrics.records_per_second ?? 0,
+
+        latency: 0,
+      },
+
+
+      flink: {
+        name: "Flink",
+
+        status:
+          status.components?.flink?.status ??
+          "unknown",
+
+        processingRate:
+          metrics.records_per_second ?? 0,
+
+        latency: 0,
+      },
+
+
+      iceberg: {
+        name: "Iceberg",
+
+        status:
+          status.components?.iceberg?.status ??
+          lakehouse.status ??
+          "unknown",
+
+        recordsStored:
+          lakehouse.record_count ?? 0,
+
+        latency: 0,
+      },
+    },
+
+
+    metrics: {
+      eventsPerSecond:
+        metrics.records_per_second ?? 0,
+
+      processingRate:
+        metrics.records_per_second ?? 0,
+
+      pipelineLatency: 0,
+
+      dataQuality:
+        quality.quality_score ?? 0,
+
+      recordsProcessed:
+        metrics.transactions_processed ?? 0,
+
+      validRecords:
+        metrics.valid_records ?? 0,
+
+      invalidRecords:
+        metrics.invalid_records ?? 0,
+
+      processingErrors:
+        metrics.processing_errors ?? 0,
+    },
+
+
+    alerts:
+      (incidents.incidents || []).map(
+        (incident) => ({
+          id: incident.id,
+
+          type:
+            incident.severity === "high"
+              ? "warning"
+              : incident.severity === "medium"
+              ? "warning"
+              : "info",
+
+          title:
+            `${incident.component} incident`,
+
+          message:
+            incident.message,
+
+          time:
+            incident.timestamp,
+
+          status:
+            incident.status,
+        })
+      ),
+
+
+    lakehouse: {
+      catalog:
+        lakehouse.catalog,
+
+      namespace:
+        lakehouse.namespace,
+
+      table:
+        lakehouse.table,
+
+      warehouse:
+        lakehouse.warehouse,
+
+      tableExists:
+        lakehouse.table_exists,
+
+      snapshotCount:
+        lakehouse.snapshot_count,
+
+      recordCount:
+        lakehouse.record_count,
+
+      status:
+        lakehouse.status,
+    },
+  };
 }

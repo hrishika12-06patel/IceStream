@@ -1,51 +1,90 @@
 import {
-  Activity,
-  Boxes,
-  Gauge,
-  ShieldCheck,
-  Zap,
-} from "lucide-react";
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
-
-const metrics = [
-  {
-    label: "Events / second",
-    value: "1,240",
-    description: "Kafka ingestion rate",
-    icon: <Zap size={19} />,
-  },
-
-  {
-    label: "Processing rate",
-    value: "1,238/s",
-    description: "Flink processing throughput",
-    icon: <Activity size={19} />,
-  },
-
-  {
-    label: "Pipeline latency",
-    value: "47 ms",
-    description: "End-to-end latency",
-    icon: <Gauge size={19} />,
-  },
-
-  {
-    label: "Data quality",
-    value: "99.8%",
-    description: "Current quality score",
-    icon: <ShieldCheck size={19} />,
-  },
-
-  {
-    label: "Records processed",
-    value: "1.25M",
-    description: "Total processed records",
-    icon: <Boxes size={19} />,
-  },
-];
+import {
+  getPipelineMetrics,
+} from "../api/pipelineApi";
 
 
 function MetricsView() {
+  const [metrics, setMetrics] =
+    useState(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [error, setError] =
+    useState("");
+
+
+  const loadMetrics =
+    useCallback(async () => {
+
+      try {
+        setError("");
+
+        const response =
+          await getPipelineMetrics();
+
+        setMetrics(response);
+
+      } catch (err) {
+
+        console.error(
+          "Metrics API error:",
+          err
+        );
+
+        setError(
+          "Unable to load pipeline metrics."
+        );
+
+      } finally {
+        setLoading(false);
+      }
+
+    }, []);
+
+
+  useEffect(() => {
+    loadMetrics();
+  }, [loadMetrics]);
+
+
+  if (loading) {
+    return (
+      <div className="view-state">
+        Loading pipeline metrics...
+      </div>
+    );
+  }
+
+
+  if (error) {
+    return (
+      <div className="view-error">
+
+        <strong>
+          Metrics unavailable
+        </strong>
+
+        <p>{error}</p>
+
+        <button
+          className="primary-button"
+          onClick={loadMetrics}
+        >
+          Retry
+        </button>
+
+      </div>
+    );
+  }
+
+
   return (
     <div className="view-container">
 
@@ -60,46 +99,21 @@ function MetricsView() {
         </h2>
 
         <p>
-          Review performance and
-          observability metrics.
+          Live runtime metrics from IceStream.
         </p>
 
       </div>
 
 
-      <div className="standalone-metrics-grid">
+      <div className="dashboard-card api-json-card">
 
-        {metrics.map((metric) => (
-
-          <div
-            key={metric.label}
-            className="metric-card"
-          >
-
-            <div className="metric-icon">
-              {metric.icon}
-            </div>
-
-
-            <div className="metric-content">
-
-              <span>
-                {metric.label}
-              </span>
-
-              <strong>
-                {metric.value}
-              </strong>
-
-              <small>
-                {metric.description}
-              </small>
-
-            </div>
-
-          </div>
-
-        ))}
+        <pre className="api-json">
+          {JSON.stringify(
+            metrics,
+            null,
+            2
+          )}
+        </pre>
 
       </div>
 

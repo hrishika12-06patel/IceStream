@@ -3024,3 +3024,91 @@
   }
 
 }
+
+.view-state {
+  min-height: 220px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border: 1px solid #1b2940;
+  border-radius: 12px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #0f1828,
+      #0b1422
+    );
+
+  color: #64748b;
+
+  font-size: 11px;
+}
+
+
+.view-error {
+  padding: 24px;
+
+  border-radius: 12px;
+
+  border:
+    1px solid
+    rgba(239, 68, 68, 0.25);
+
+  background:
+    rgba(239, 68, 68, 0.06);
+}
+
+
+.view-error strong {
+  display: block;
+
+  color: #f87171;
+
+  font-size: 13px;
+}
+
+
+.view-error p {
+  margin: 6px 0 16px;
+
+  color: #8896aa;
+
+  font-size: 10px;
+}
+
+
+/* Temporary API inspection */
+
+.api-json-card {
+  overflow: hidden;
+}
+
+
+.api-json {
+  margin: 0;
+
+  padding: 18px;
+
+  overflow-x: auto;
+
+  color: #9fb3cf;
+
+  background: #08101d;
+
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    monospace;
+
+  font-size: 10px;
+
+  line-height: 1.7;
+
+  white-space: pre-wrap;
+
+  word-break: break-word;
+}
