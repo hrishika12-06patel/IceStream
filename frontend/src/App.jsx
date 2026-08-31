@@ -33,7 +33,6 @@ import {
 
 import {
   getPipelineStatus,
-  simulatePipelineUpdate,
 } from "./api/pipelineApi";
 
 import "@xyflow/react/dist/style.css";
@@ -787,44 +786,32 @@ function App() {
   const [activeView, setActiveView] =
   useState("dashboard");
 
-  const loadPipelineData = useCallback(
-    async () => {
+  const loadPipelineData = useCallback(async () => {
+  try {
+    setError("");
 
-      try {
+    const data = await getPipelineStatus();
 
-        setError(null);
+    setPipelineData(data);
+  } catch (err) {
+    console.error("Pipeline API error:", err);
 
-        const data =
-          await getPipelineStatus();
-
-        setPipelineData(data);
-
-      } catch (err) {
-
-        console.error(
-          "Pipeline API error:",
-          err
-        );
-
-        setError(
-          "Unable to fetch pipeline metrics"
-        );
-
-      } finally {
-
-        setLoading(false);
-
-      }
-
-    },
-    []
-  );
+    setError("Unable to fetch pipeline metrics");
+  } finally {
+    setLoading(false);
+  }
+}, []);
 
   useEffect(() => {
+  loadPipelineData();
 
-    loadPipelineData();
+  const interval = setInterval(
+    loadPipelineData,
+    5000
+  );
 
-  }, [loadPipelineData]);
+  return () => clearInterval(interval);
+}, [loadPipelineData]);
 
   useEffect(() => {
 
@@ -911,26 +898,14 @@ function App() {
   }, [pipelineData, setNodes]);
 
   useEffect(() => {
-
   const interval = setInterval(() => {
-
-    setPipelineData((current) => {
-
-      if (!current) {
-        return current;
-      }
-
-      return simulatePipelineUpdate(current);
-
-    });
-
+    loadPipelineData();
   }, 5000);
 
-
-  return () =>
+  return () => {
     clearInterval(interval);
-
-}, []);
+  };
+}, [loadPipelineData]);
 
 
   /* =========================
@@ -1021,7 +996,9 @@ function App() {
   const pipelineHealth =
     error
       ? "offline"
-      : "healthy";
+      : pipelineData?.overallStatus === "healthy"
+      ? "healthy"
+      : "degraded";
 
 function renderActiveView() {
   switch (activeView) {
