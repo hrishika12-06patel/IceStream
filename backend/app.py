@@ -8,7 +8,7 @@ and Apache Iceberg lakehouse storage monitoring.
 
 import logging
 import os
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -61,6 +61,8 @@ class HealthResponse(BaseModel):
 class ComponentDetail(BaseModel):
     status: str = Field(..., examples=["healthy"])
 
+    model_config = {"extra": "allow"}
+
 
 class PipelineStatusResponse(BaseModel):
     overall_status: str = Field(..., examples=["healthy"])
@@ -69,11 +71,14 @@ class PipelineStatusResponse(BaseModel):
 
 class PipelineMetricsResponse(BaseModel):
     source: str = Field("unavailable", examples=["runtime"])
-    transactions_processed: int = Field(0, examples=[1200])
-    valid_records: int = Field(0, examples=[1180])
-    invalid_records: int = Field(0, examples=[20])
-    processing_errors: int = Field(0, examples=[0])
-    records_per_second: float = Field(0.0, examples=[120.5])
+    metric_source: Optional[str] = Field("unavailable", examples=["iceberg_snapshot", "flink_rest", "kafka_offsets", "unavailable"])
+    pipeline_status: Optional[str] = Field(None, examples=["healthy"])
+    transactions_processed: Optional[int] = Field(None, examples=[1200])
+    valid_records: Optional[int] = Field(None, examples=[1180])
+    invalid_records: Optional[int] = Field(None, examples=[20])
+    processing_errors: Optional[int] = Field(None, examples=[0])
+    records_per_second: Optional[float] = Field(None, examples=[120.5])
+    runtime: Optional[Dict[str, Any]] = Field(None)
 
 
 class DataQualityRule(BaseModel):
@@ -83,16 +88,17 @@ class DataQualityRule(BaseModel):
 
 
 class DataQualityResponse(BaseModel):
-    total_records: int = Field(0, examples=[1200])
-    valid_records: int = Field(0, examples=[1180])
-    invalid_records: int = Field(0, examples=[20])
-    quality_score: float = Field(100.0, examples=[98.33])
+    total_records: Optional[int] = Field(0, examples=[1200])
+    valid_records: Optional[int] = Field(None, examples=[1180])
+    invalid_records: Optional[int] = Field(None, examples=[20])
+    quality_score: Optional[float] = Field(None, examples=[98.33])
+    status: str = Field("no_data", examples=["measured", "metrics_unavailable", "no_data"])
     rules: List[DataQualityRule] = Field(default_factory=list)
 
 
 class IncidentItem(BaseModel):
     id: str = Field(..., examples=["INC-KAFKA-OFFLINE"])
-    severity: str = Field(..., examples=["medium"])
+    severity: str = Field(..., examples=["high"])
     component: str = Field(..., examples=["kafka"])
     message: str = Field(..., examples=["Kafka broker is not reachable."])
     timestamp: str
@@ -111,6 +117,8 @@ class LakehouseResponse(BaseModel):
     warehouse: str = Field(..., examples=["./warehouse"])
     table_exists: bool = Field(False, examples=[True])
     snapshot_count: int = Field(0, examples=[1])
+    latest_snapshot_id: Optional[str] = Field(None, examples=["123456789"])
+    latest_metadata_file: Optional[str] = Field(None, examples=["v1.metadata.json"])
     record_count: Optional[int] = Field(None, examples=[100])
     status: str = Field(..., examples=["healthy"])
 
