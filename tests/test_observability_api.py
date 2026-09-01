@@ -2,15 +2,25 @@
 Unit test suite for IceStream Observability Metrics API.
 
 Tests API contracts, JSON response schemas, status codes, CORS headers,
-and graceful handling of offline/unavailable infrastructure components.
+runtime metrics collection, status aggregation, data quality zero-record behavior,
+incident generation, and graceful handling of offline/unavailable infrastructure components.
 All tests run standalone without requiring Docker, Kafka, Flink, or Iceberg.
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.app import app
+from backend.services.pipeline_metrics import (
+    get_data_quality_metrics,
+    get_flink_runtime_metrics,
+    get_incidents,
+    get_iceberg_runtime_metrics,
+    get_kafka_runtime_metrics,
+    get_pipeline_metrics,
+    get_pipeline_status,
+)
 
 client = TestClient(app)
 
@@ -23,7 +33,7 @@ def test_health_endpoint_returns_200_and_expected_contract():
     response = client.get("/health")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
-    
+
     data = response.json()
     assert data["status"] == "healthy"
     assert data["service"] == "icestream-observability-api"
@@ -32,39 +42,144 @@ def test_health_endpoint_returns_200_and_expected_contract():
 
 
 # =========================================================
-# 2. Pipeline Status Endpoint Tests
+# 2. Kafka Runtime Metrics Tests
 # =========================================================
 
-def test_pipeline_status_offline_infrastructure_returns_200_and_fallback_statuses():
-    with patch("backend.services.pipeline_metrics.check_kafka_status", return_value="not_running"), \
-         patch("backend.services.pipeline_metrics.check_flink_status", return_value=("not_running", None)), \
-         patch("backend.services.pipeline_metrics.check_iceberg_storage_status", return_value=("not_running", {})):
-        
-        response = client.get("/api/pipeline/status")
-        assert response.status_code == 200
-        assert response.headers["content-type"].startswith("application/json")
-        
-        data = response.json()
-        assert "overall_status" in data
-        assert data["overall_status"] == "unknown"
-        assert "components" in data
-        assert "kafka" in data["components"]
-        assert "flink" in data["components"]
-        assert "iceberg" in data["components"]
-        
-        assert data["components"]["kafka"]["status"] == "not_running"
-        assert data["components"]["flink"]["status"] == "not_running"
-        assert data["components"]["iceberg"]["status"] == "not_running"
+def test_kafka_runtime_metrics_healthy_shape_and_offsets():
+    mock_consumer = MagicMock()
+    mock_consumer.partitions_for_topic.return_value = {0, 1, 2}
+    mock_consumer.beginning_offsets.return_value = {("transactions", 0): 0, ("transactions", 1): 0, ("transactions", 2): 0}
+    mock_consumer.end_offsets.return_value = {("transactions", 0): 10, ("transactions", 1): 5, ("transactions", 2): 5}
+
+    with patch("socket.create_connection"), \
+         patch("kafka.KafkaConsumer", return_value=mock_consumer):
+        metrics = get_kafka_runtime_metrics()
+        assert metrics["status"] == "healthy"
+        assert metrics["bootstrap_servers"] == "localhost:9092"
+        assert metrics["topic"] == "transactions"
+        assert metrics["topic_exists"] is True
+        assert metrics["partition_count"] == 3
+        assert metrics["total_messages"] == 20
 
 
-def test_pipeline_status_healthy_infrastructure():
-    with patch("backend.services.pipeline_metrics.check_kafka_status", return_value="healthy"), \
-         patch("backend.services.pipeline_metrics.check_flink_status", return_value=("healthy", {"jobs-running": 1})), \
-         patch("backend.services.pipeline_metrics.check_iceberg_storage_status", return_value=("healthy", {})):
-        
+def test_kafka_runtime_metrics_offline_fallback():
+    with patch("socket.create_connection", side_effect=OSError("Connection refused")):
+        metrics = get_kafka_runtime_metrics(timeout=0.1)
+        assert metrics["status"] == "not_running"
+        assert metrics["bootstrap_servers"] == "localhost:9092"
+        assert metrics["topic"] == "transactions"
+        assert metrics["topic_exists"] is None
+        assert metrics["partition_count"] is None
+        assert metrics["total_messages"] is None
+
+
+# =========================================================
+# 3. Flink Runtime Metrics Tests
+# =========================================================
+
+def test_flink_runtime_metrics_healthy_shape_and_records():
+    overview_json = (
+        '{"flink-version": "1.18.1", "taskmanagers": 1, "slots-total": 2, '
+        '"slots-available": 1, "jobs-running": 1, "jobs-failed": 0}'
+    ).encode("utf-8")
+    jobs_json = (
+        '{"jobs": [{"jid": "job123", "name": "icestream_job", "state": "RUNNING"}]}'
+    ).encode("utf-8")
+    job_detail_json = (
+        '{"vertices": ['
+        '{"name": "Source: Kafka", "metrics": {"read-records": 50, "write-records": 50}},'
+        '{"name": "IcebergSink", "metrics": {"read-records": 50, "write-records": 50}}'
+        ']}'
+    ).encode("utf-8")
+
+    def mock_urlopen(req, timeout=0.5):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        resp = MagicMock()
+        resp.status = 200
+        if "jobs/overview" in url:
+            resp.read.return_value = jobs_json
+        elif "jobs/job123" in url:
+            resp.read.return_value = job_detail_json
+        else:
+            resp.read.return_value = overview_json
+        resp.__enter__.return_value = resp
+        return resp
+
+    with patch("urllib.request.urlopen", side_effect=mock_urlopen):
+        metrics = get_flink_runtime_metrics(timeout=0.1)
+        assert metrics["status"] == "healthy"
+        assert metrics["flink_version"] == "1.18.1"
+        assert metrics["taskmanagers"] == 1
+        assert metrics["slots_total"] == 2
+        assert metrics["slots_available"] == 1
+        assert metrics["jobs_running"] == 1
+        assert metrics["records_in"] == 100
+        assert metrics["records_out"] == 100
+        assert len(metrics["jobs"]) == 1
+        assert metrics["jobs"][0]["id"] == "job123"
+
+
+def test_flink_runtime_metrics_offline_fallback():
+    with patch("urllib.request.urlopen", side_effect=OSError("Connection refused")):
+        metrics = get_flink_runtime_metrics(timeout=0.1)
+        assert metrics["status"] == "not_running"
+        assert metrics["flink_version"] is None
+        assert metrics["taskmanagers"] is None
+        assert metrics["jobs_running"] == 0
+        assert metrics["records_in"] is None
+        assert metrics["records_out"] is None
+        assert metrics["jobs"] == []
+
+
+# =========================================================
+# 4. Iceberg Runtime Information Tests
+# =========================================================
+
+def test_iceberg_runtime_metrics_inspection_and_fallback():
+    with patch("os.path.exists", return_value=False):
+        metrics = get_iceberg_runtime_metrics()
+        assert metrics["status"] == "unavailable"
+        assert metrics["table_exists"] is False
+        assert metrics["snapshot_count"] == 0
+        assert metrics["latest_snapshot_id"] is None
+        assert metrics["latest_metadata_file"] is None
+        assert metrics["record_count"] is None
+
+
+def test_iceberg_runtime_metrics_healthy_table():
+    metadata_mock = {
+        "current-snapshot-id": 12345,
+        "snapshots": [
+            {"snapshot-id": 12345, "summary": {"total-records": "315"}}
+        ],
+    }
+    with patch("os.path.exists", return_value=True), \
+         patch("json.load", return_value=metadata_mock), \
+         patch("builtins.open", MagicMock()):
+        metrics = get_iceberg_runtime_metrics()
+        assert metrics["status"] == "healthy"
+        assert metrics["table_exists"] is True
+        assert metrics["snapshot_count"] == 1
+        assert metrics["latest_snapshot_id"] == "12345"
+        assert metrics["record_count"] == 315
+
+
+# =========================================================
+# 5. Pipeline Status Aggregation Tests
+# =========================================================
+
+def test_pipeline_status_all_healthy():
+    mock_kafka = {"status": "healthy"}
+    mock_flink = {"status": "healthy"}
+    mock_iceberg = {"status": "healthy"}
+
+    with patch("backend.services.pipeline_metrics.get_kafka_runtime_metrics", return_value=mock_kafka), \
+         patch("backend.services.pipeline_metrics.get_flink_runtime_metrics", return_value=mock_flink), \
+         patch("backend.services.pipeline_metrics.get_iceberg_runtime_metrics", return_value=mock_iceberg):
+
         response = client.get("/api/pipeline/status")
         assert response.status_code == 200
-        
+
         data = response.json()
         assert data["overall_status"] == "healthy"
         assert data["components"]["kafka"]["status"] == "healthy"
@@ -72,113 +187,217 @@ def test_pipeline_status_healthy_infrastructure():
         assert data["components"]["iceberg"]["status"] == "healthy"
 
 
-def test_pipeline_status_degraded_infrastructure():
-    with patch("backend.services.pipeline_metrics.check_kafka_status", return_value="healthy"), \
-         patch("backend.services.pipeline_metrics.check_flink_status", return_value=("not_running", None)), \
-         patch("backend.services.pipeline_metrics.check_iceberg_storage_status", return_value=("not_running", {})):
-        
+def test_pipeline_status_degraded_when_kafka_healthy_and_flink_offline():
+    mock_kafka = {"status": "healthy"}
+    mock_flink = {"status": "not_running"}
+    mock_iceberg = {"status": "unavailable"}
+
+    with patch("backend.services.pipeline_metrics.get_kafka_runtime_metrics", return_value=mock_kafka), \
+         patch("backend.services.pipeline_metrics.get_flink_runtime_metrics", return_value=mock_flink), \
+         patch("backend.services.pipeline_metrics.get_iceberg_runtime_metrics", return_value=mock_iceberg):
+
         response = client.get("/api/pipeline/status")
         assert response.status_code == 200
-        
+
         data = response.json()
         assert data["overall_status"] == "degraded"
         assert data["components"]["kafka"]["status"] == "healthy"
         assert data["components"]["flink"]["status"] == "not_running"
 
 
-# =========================================================
-# 3. Pipeline Metrics Endpoint Tests
-# =========================================================
+def test_pipeline_status_unavailable_when_all_offline():
+    mock_kafka = {"status": "not_running"}
+    mock_flink = {"status": "not_running"}
+    mock_iceberg = {"status": "unavailable"}
 
-def test_pipeline_metrics_offline_fallback():
-    with patch("backend.services.pipeline_metrics.check_flink_status", return_value=("not_running", None)):
-        response = client.get("/api/pipeline/metrics")
+    with patch("backend.services.pipeline_metrics.get_kafka_runtime_metrics", return_value=mock_kafka), \
+         patch("backend.services.pipeline_metrics.get_flink_runtime_metrics", return_value=mock_flink), \
+         patch("backend.services.pipeline_metrics.get_iceberg_runtime_metrics", return_value=mock_iceberg):
+
+        response = client.get("/api/pipeline/status")
         assert response.status_code == 200
-        assert response.headers["content-type"].startswith("application/json")
-        
+
         data = response.json()
-        assert data["source"] == "unavailable"
-        assert isinstance(data["transactions_processed"], int)
-        assert isinstance(data["valid_records"], int)
-        assert isinstance(data["invalid_records"], int)
-        assert isinstance(data["processing_errors"], int)
-        assert isinstance(data["records_per_second"], (int, float))
-        
-        assert data["transactions_processed"] == 0
-        assert data["valid_records"] == 0
-        assert data["invalid_records"] == 0
+        assert data["overall_status"] == "unavailable"
+        assert data["components"]["kafka"]["status"] == "not_running"
+        assert data["components"]["flink"]["status"] == "not_running"
+        assert data["components"]["iceberg"]["status"] == "unavailable"
 
 
-def test_pipeline_metrics_runtime_source():
-    overview_data = {"jobs-running": 1, "slots-total": 4}
-    with patch("backend.services.pipeline_metrics.check_flink_status", return_value=("healthy", overview_data)):
+# =========================================================
+# 6. Pipeline Metrics Endpoint & Priority Tests
+# =========================================================
+
+def test_pipeline_metrics_priority_iceberg_snapshot():
+    mock_status = {
+        "overall_status": "healthy",
+        "components": {
+            "kafka": {"status": "healthy", "topic": "transactions", "partition_count": 3, "total_messages": 100},
+            "flink": {"status": "healthy", "jobs_running": 1, "taskmanagers": 1, "records_in": 100, "records_out": 100},
+            "iceberg": {"status": "healthy", "snapshot_count": 10, "latest_snapshot_id": "123", "record_count": 250},
+        },
+    }
+    with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status):
         response = client.get("/api/pipeline/metrics")
         assert response.status_code == 200
-        
+
         data = response.json()
         assert data["source"] == "runtime"
-        assert data["transactions_processed"] > 0
-        assert data["valid_records"] > 0
+        assert data["metric_source"] == "iceberg_snapshot"
+        assert data["transactions_processed"] == 250
+        assert data["processing_errors"] == 0
+        assert data["runtime"]["iceberg"]["record_count"] == 250
+
+
+def test_pipeline_metrics_priority_flink_rest_fallback():
+    mock_status = {
+        "overall_status": "healthy",
+        "components": {
+            "kafka": {"status": "healthy", "topic": "transactions", "partition_count": 3, "total_messages": 100},
+            "flink": {"status": "healthy", "jobs_running": 1, "taskmanagers": 1, "records_in": 80, "records_out": 80},
+            "iceberg": {"status": "healthy", "snapshot_count": 0, "latest_snapshot_id": None, "record_count": None},
+        },
+    }
+    with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status):
+        response = client.get("/api/pipeline/metrics")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["source"] == "runtime"
+        assert data["metric_source"] == "flink_rest"
+        assert data["transactions_processed"] == 80
+
+
+def test_pipeline_metrics_priority_kafka_offsets_fallback():
+    mock_status = {
+        "overall_status": "healthy",
+        "components": {
+            "kafka": {"status": "healthy", "topic": "transactions", "partition_count": 3, "total_messages": 45},
+            "flink": {"status": "healthy", "jobs_running": 1, "taskmanagers": 1, "records_in": None, "records_out": None},
+            "iceberg": {"status": "healthy", "snapshot_count": 0, "latest_snapshot_id": None, "record_count": None},
+        },
+    }
+    with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status):
+        response = client.get("/api/pipeline/metrics")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["source"] == "runtime"
+        assert data["metric_source"] == "kafka_offsets"
+        assert data["transactions_processed"] == 45
+
+
+def test_pipeline_metrics_unavailable_source_when_offline():
+    mock_status = {
+        "overall_status": "unavailable",
+        "components": {
+            "kafka": {"status": "not_running", "topic": "transactions", "partition_count": None, "total_messages": None},
+            "flink": {"status": "not_running", "jobs_running": 0, "taskmanagers": None, "records_in": None, "records_out": None},
+            "iceberg": {"status": "unavailable", "snapshot_count": 0, "latest_snapshot_id": None, "record_count": None},
+        },
+    }
+    with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status):
+        response = client.get("/api/pipeline/metrics")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["source"] == "unavailable"
+        assert data["metric_source"] == "unavailable"
+        assert data["pipeline_status"] == "unavailable"
+        assert data["transactions_processed"] is None
+        assert data["valid_records"] is None
 
 
 # =========================================================
-# 4. Data Quality Endpoint Tests
+# 7. Data Quality Endpoint Tests
 # =========================================================
 
-def test_data_quality_endpoint_contract():
-    response = client.get("/api/data-quality")
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("application/json")
-    
-    data = response.json()
-    assert "total_records" in data
-    assert "valid_records" in data
-    assert "invalid_records" in data
-    assert "quality_score" in data
-    assert "rules" in data
-    
-    assert isinstance(data["quality_score"], (int, float))
-    assert isinstance(data["rules"], list)
-    assert len(data["rules"]) > 0
-    
-    rule = data["rules"][0]
-    assert "rule" in rule
-    assert "description" in rule
-    assert "status" in rule
+def test_data_quality_zero_record_behavior():
+    mock_metrics = {
+        "source": "unavailable",
+        "metric_source": "unavailable",
+        "transactions_processed": None,
+        "valid_records": None,
+        "invalid_records": None,
+    }
+    with patch("backend.services.pipeline_metrics.get_pipeline_metrics", return_value=mock_metrics):
+        response = client.get("/api/data-quality")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["total_records"] == 0
+        assert data["valid_records"] == 0
+        assert data["invalid_records"] == 0
+        assert data["quality_score"] is None
+        assert data["status"] == "no_data"
+        assert isinstance(data["rules"], list)
+        assert len(data["rules"]) > 0
+
+
+def test_data_quality_unmeasured_records_behavior():
+    mock_metrics = {
+        "source": "runtime",
+        "metric_source": "iceberg_snapshot",
+        "transactions_processed": 315,
+        "valid_records": None,
+        "invalid_records": None,
+    }
+    with patch("backend.services.pipeline_metrics.get_pipeline_metrics", return_value=mock_metrics):
+        response = client.get("/api/data-quality")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["total_records"] == 315
+        assert data["valid_records"] is None
+        assert data["invalid_records"] is None
+        assert data["quality_score"] is None
+        assert data["status"] == "metrics_unavailable"
 
 
 # =========================================================
-# 5. Incidents Endpoint Tests
+# 8. Incidents Endpoint Tests
 # =========================================================
 
-def test_incidents_endpoint_returns_expected_structure():
-    response = client.get("/api/incidents")
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("application/json")
-    
-    data = response.json()
-    assert "total_incidents" in data
-    assert "incidents" in data
-    assert isinstance(data["total_incidents"], int)
-    assert isinstance(data["incidents"], list)
-    assert data["total_incidents"] == len(data["incidents"])
-    
-    for incident in data["incidents"]:
-        assert "id" in incident
-        assert "severity" in incident
-        assert "component" in incident
-        assert "message" in incident
-        assert "timestamp" in incident
-        assert "status" in incident
-        assert incident["severity"] in ("low", "medium", "high", "critical")
-        assert incident["status"] in ("open", "resolved")
+def test_incidents_when_components_offline():
+    mock_status = {
+        "overall_status": "unavailable",
+        "components": {
+            "kafka": {"status": "not_running"},
+            "flink": {"status": "not_running"},
+            "iceberg": {"status": "unavailable"},
+        },
+    }
+    with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status):
+        response = client.get("/api/incidents")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["total_incidents"] == 3
+        incidents_by_id = {inc["id"]: inc for inc in data["incidents"]}
+
+        assert "INC-KAFKA-OFFLINE" in incidents_by_id
+        assert incidents_by_id["INC-KAFKA-OFFLINE"]["severity"] == "high"
+        assert incidents_by_id["INC-KAFKA-OFFLINE"]["component"] == "kafka"
+
+        assert "INC-FLINK-OFFLINE" in incidents_by_id
+        assert incidents_by_id["INC-FLINK-OFFLINE"]["severity"] == "high"
+        assert incidents_by_id["INC-FLINK-OFFLINE"]["component"] == "flink"
+
+        assert "INC-ICEBERG-UNAVAILABLE" in incidents_by_id
+        assert incidents_by_id["INC-ICEBERG-UNAVAILABLE"]["severity"] == "medium"
+        assert incidents_by_id["INC-ICEBERG-UNAVAILABLE"]["component"] == "iceberg"
 
 
 def test_incidents_empty_when_all_healthy():
-    with patch("backend.services.pipeline_metrics.check_kafka_status", return_value="healthy"), \
-         patch("backend.services.pipeline_metrics.check_flink_status", return_value=("healthy", {"jobs-running": 1})), \
-         patch("backend.services.pipeline_metrics.check_iceberg_storage_status", return_value=("healthy", {})):
-        
+    mock_status = {
+        "overall_status": "healthy",
+        "components": {
+            "kafka": {"status": "healthy"},
+            "flink": {"status": "healthy"},
+            "iceberg": {"status": "healthy"},
+        },
+    }
+    with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status):
         response = client.get("/api/incidents")
         assert response.status_code == 200
         data = response.json()
@@ -187,30 +406,38 @@ def test_incidents_empty_when_all_healthy():
 
 
 # =========================================================
-# 6. Lakehouse Endpoint Tests
+# 9. Lakehouse Endpoint Tests
 # =========================================================
 
 def test_lakehouse_endpoint_contract():
-    response = client.get("/api/lakehouse")
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("application/json")
-    
-    data = response.json()
-    assert "catalog" in data
-    assert "namespace" in data
-    assert "table" in data
-    assert "warehouse" in data
-    assert "table_exists" in data
-    assert "snapshot_count" in data
-    assert "record_count" in data
-    assert "status" in data
-    
-    assert isinstance(data["table_exists"], bool)
-    assert isinstance(data["snapshot_count"], int)
+    mock_iceberg = {
+        "catalog": "local",
+        "namespace": "icestream",
+        "table": "transactions",
+        "warehouse": "./warehouse",
+        "table_exists": True,
+        "snapshot_count": 5,
+        "latest_snapshot_id": "1122334455",
+        "latest_metadata_file": "v5.metadata.json",
+        "record_count": 315,
+        "status": "healthy",
+    }
+    with patch("backend.services.pipeline_metrics.get_iceberg_runtime_metrics", return_value=mock_iceberg):
+        response = client.get("/api/lakehouse")
+        assert response.status_code == 200
+        data = response.json()
+
+        assert data["catalog"] == "local"
+        assert data["table_exists"] is True
+        assert data["snapshot_count"] == 5
+        assert data["latest_snapshot_id"] == "1122334455"
+        assert data["latest_metadata_file"] == "v5.metadata.json"
+        assert data["record_count"] == 315
+        assert data["status"] == "healthy"
 
 
 # =========================================================
-# 7. CORS Headers Test
+# 10. CORS Headers Test
 # =========================================================
 
 def test_cors_headers_allowed_origin():
@@ -220,3 +447,4 @@ def test_cors_headers_allowed_origin():
     )
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
