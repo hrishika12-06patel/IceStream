@@ -21,6 +21,7 @@ import {
   Database,
   Gauge,
   GitBranch,
+  History,
   LayoutDashboard,
   Menu,
   MessageSquareWarning,
@@ -64,6 +65,9 @@ import AlertsView
 
 import SettingsView
   from "./views/SettingsView";
+
+import HistoryView
+  from "./views/HistoryView";
 
 /* -----------------------------
    Pipeline Custom Node
@@ -359,6 +363,23 @@ function Sidebar({
           <MessageSquareWarning size={16} />
           <span>Issues</span>
         </div>
+        
+        <div
+          className={
+            activeView === "history"
+              ? "nav-item active"
+              : "nav-item"
+          }
+          onClick={() =>
+            onNavigate("history")
+          }
+        >
+          <History size={16} />
+
+          <span>
+            History
+          </span>
+        </div>
 
         <div 
           className={
@@ -449,6 +470,11 @@ function Header({
   incidents: {
     parent: "Monitoring",
     current: "Issues",
+  },
+
+  history: {
+    parent: "Monitoring",
+    current: "History",
   },
 
   settings: {
@@ -1017,6 +1043,9 @@ function renderActiveView() {
 
     case "incidents":
       return <IncidentsView />;
+
+    case "history":
+      return <HistoryView />;
 
     case "settings":
       return <SettingsView />;

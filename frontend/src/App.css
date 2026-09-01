@@ -3112,3 +3112,296 @@
 
   word-break: break-word;
 }
+
+/* =========================
+   PIPELINE HISTORY
+========================= */
+
+.history-view {
+  width: 100%;
+}
+
+
+/* =========================
+   HISTORY HEADING
+========================= */
+
+.history-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+
+  gap: 20px;
+
+  margin-bottom: 18px;
+}
+
+
+.history-heading h2 {
+  margin: 0;
+
+  color: #f4f7fb;
+
+  font-size: 25px;
+  font-weight: 650;
+
+  letter-spacing: -0.5px;
+}
+
+
+.history-heading p {
+  margin: 6px 0 0;
+
+  color: #617089;
+
+  font-size: 11px;
+}
+
+
+/* =========================
+   TIME RANGE
+========================= */
+
+.history-range-selector {
+  display: flex;
+  align-items: center;
+
+  padding: 3px;
+
+  border: 1px solid #1b2940;
+
+  border-radius: 8px;
+
+  background: #0b1422;
+}
+
+
+.history-range {
+  min-width: 42px;
+
+  padding: 7px 10px;
+
+  border: 0;
+  border-radius: 6px;
+
+  background: transparent;
+
+  color: #64748b;
+
+  font-size: 9px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+
+.history-range:hover {
+  color: #cbd5e1;
+
+  background: #111b2d;
+}
+
+
+.history-range.active {
+  color: #ffffff;
+
+  background:
+    linear-gradient(
+      135deg,
+      #2563eb,
+      #4f46e5
+    );
+}
+
+
+/* =========================
+   HISTORY SUMMARY
+========================= */
+
+.history-summary-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(4, 1fr);
+
+  gap: 12px;
+
+  margin-bottom: 14px;
+}
+
+
+.history-summary-card {
+  display: flex;
+  align-items: center;
+
+  gap: 12px;
+
+  padding: 15px;
+
+  border: 1px solid #1b2940;
+
+  border-radius: 11px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #0f1828,
+      #0b1422
+    );
+}
+
+
+.history-summary-icon {
+  width: 36px;
+  height: 36px;
+
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 8px;
+
+  color: #60a5fa;
+
+  background:
+    rgba(37, 99, 235, 0.1);
+}
+
+
+.history-summary-card span {
+  display: block;
+
+  color: #617089;
+
+  font-size: 8px;
+}
+
+
+.history-summary-card strong {
+  display: block;
+
+  margin-top: 3px;
+
+  color: #e8edf7;
+
+  font-size: 18px;
+}
+
+
+.history-summary-card small {
+  display: block;
+
+  margin-top: 3px;
+
+  color: #52627b;
+
+  font-size: 8px;
+}
+
+
+/* =========================
+   HISTORY CHARTS
+========================= */
+
+.history-chart-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, 1fr);
+
+  gap: 14px;
+}
+
+
+.history-chart-card {
+  overflow: hidden;
+}
+
+
+.history-chart-card
+.card-header > svg {
+  color: #62748d;
+}
+
+
+.history-chart {
+  width: 100%;
+  height: 270px;
+
+  padding:
+    18px
+    12px
+    10px
+    2px;
+}
+
+
+/* Recharts */
+
+.recharts-cartesian-axis-tick-value {
+  fill: #52627b;
+}
+
+
+.recharts-tooltip-label {
+  color: #e2e8f0;
+}
+
+
+.recharts-default-tooltip {
+  color: #cbd5e1 !important;
+}
+
+
+/* =========================
+   HISTORY RESPONSIVE
+========================= */
+
+@media (max-width: 1100px) {
+
+  .history-summary-grid {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+
+  .history-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+}
+
+
+@media (max-width: 800px) {
+
+  .history-heading {
+    align-items: flex-start;
+
+    flex-direction: column;
+  }
+
+
+  .history-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+
+  .history-range-selector {
+    width: 100%;
+  }
+
+
+  .history-range {
+    flex: 1;
+  }
+
+
+  .history-chart {
+    height: 240px;
+  }
+
+}
