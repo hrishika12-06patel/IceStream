@@ -406,7 +406,13 @@ function Sidebar({
           </span>
         </div>
 
-        <strong>{healthy ? "Operational" : "Unavailable"}</strong>
+        <strong>
+          {pipelineHealth === "healthy"
+            ? "Operational"
+            : pipelineHealth === "degraded"
+            ? "Degraded"
+            : "Unavailable"}
+        </strong>
 
         <div className="health-bar">
           <div style={{
@@ -417,7 +423,13 @@ function Sidebar({
           </div>
         </div>
 
-        <small>{healthy ? "All pipeline services are healthy" : "Unable to reach pipeline backend"}</small>
+        <small>
+          {pipelineHealth === "healthy"
+            ? "All pipeline services are healthy"
+            : pipelineHealth === "degraded"
+            ? "One or more pipeline services need attention"
+            : "Unable to reach observability backend"}
+        </small>
 
       </div>
 
@@ -431,7 +443,9 @@ function Sidebar({
 
 function Header({
   activeView,
-  pipelineHealth
+  pipelineHealth,
+  connectionStatus,
+  refreshing,
 }) {
   const healthy =
     pipelineHealth === "healthy";
@@ -503,13 +517,26 @@ return (
 
       <div className="topbar-actions">
 
-        <div className={`operational ${
-            healthy
-              ? ""
-              : "operational-error"
-          }`}>
+        <div
+          className={`operational ${
+            connectionStatus === "disconnected"
+              ? "operational-error"
+              : connectionStatus === "connecting"
+              ? "operational-connecting"
+              : ""
+          }`}
+        >
+
           <span></span>
-          {healthy ? "All systems operational" : "Pipeline unavailable"}
+
+          {refreshing
+            ? "Refreshing..."
+            : connectionStatus === "connected"
+            ? "Backend connected"
+            : connectionStatus === "connecting"
+            ? "Connecting..."
+            : "Backend disconnected"}
+
         </div>
 
         <button className="help-button">
@@ -524,6 +551,18 @@ return (
 
     </header>
   );
+}
+
+function formatNumber(value) {
+
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value)
+  ) {
+    return "—";
+  }
+
+  return value.toLocaleString();
 }
 
 /* -----------------------------
@@ -648,13 +687,13 @@ function ActivePipelines({
 }) {
 
   const kafka =
-    pipelineData.services.kafka;
+  pipelineData?.services?.kafka || {};
 
   const flink =
-    pipelineData.services.flink;
+    pipelineData?.services?.flink || {};
 
   const iceberg =
-    pipelineData.services.iceberg;
+    pipelineData?.services?.iceberg || {};
   
   return (
     <div className="dashboard-card">
@@ -676,20 +715,32 @@ function ActivePipelines({
 
         <div className="table-row">
           <span>transaction-stream</span>
-          <span className="running">{kafka.status}</span>
-          <span>{kafka.eventsPerSecond}/s</span>
+          <span className="running">{kafka.status || "unknown"}</span>
+          <span>
+            {formatNumber(
+              kafka.eventsPerSecond
+            )}/s
+          </span>
         </div>
 
         <div className="table-row">
           <span>quality-monitor</span>
-          <span className="running">{flink.status}</span>
-          <span>{flink.processingRate}/s</span>
+          <span className="running">{flink.status || "unknown"}</span>
+          <span>
+            {formatNumber(
+              flink.processingRate
+            )}/s
+          </span>
         </div>
 
         <div className="table-row">
           <span>iceberg-writer</span>
-          <span className="pending">{iceberg.status}</span>
-          <span>{iceberg.recordsStored.toLocaleString()}</span>
+          <span className="pending">{iceberg.status || "unknown"}</span>
+          <span>
+            {formatNumber(
+              iceberg.recordsStored
+            )}
+          </span>
         </div>
 
       </div>
@@ -706,16 +757,31 @@ function LatencyCard({
   pipelineData,
 }) {
   const kafka =
-    pipelineData.services.kafka;
+    pipelineData?.services?.kafka || {};
 
   const flink =
-    pipelineData.services.flink;
+    pipelineData?.services?.flink || {};
 
   const iceberg =
-    pipelineData.services.iceberg;
+    pipelineData?.services?.iceberg || {};
 
   const total =
-    pipelineData.metrics.pipelineLatency;
+    pipelineData?.metrics?.pipelineLatency ?? 0;
+
+  const kafkaLatency =
+  Number.isFinite(kafka.latency)
+    ? kafka.latency
+    : 0;
+
+  const flinkLatency =
+    Number.isFinite(flink.latency)
+      ? flink.latency
+      : 0;
+
+  const icebergLatency =
+    Number.isFinite(iceberg.latency)
+      ? iceberg.latency
+      : 0;
 
   return (
     <div className="dashboard-card">
@@ -734,7 +800,7 @@ function LatencyCard({
           <div className="latency-bar">
             <div style={{
                 width: `${Math.min(
-                  kafka.latency * 3,
+                  kafkaLatency * 3,
                   100
                 )}%`,
               }}>
@@ -748,7 +814,7 @@ function LatencyCard({
           <div className="latency-bar">
             <div style={{
                 width: `${Math.min(
-                  flink.latency * 3,
+                  flinkLatency * 3,
                   100
                 )}%`,
               }}>
@@ -762,7 +828,7 @@ function LatencyCard({
           <div className="latency-bar">
             <div style={{
                 width: `${Math.min(
-                  iceberg.latency * 3,
+                  icebergLatency * 3,
                   100
                 )}%`,
               }}>
@@ -803,6 +869,15 @@ function App() {
 
   const [error, setError] = useState("");
 
+  const [connectionStatus, setConnectionStatus] =
+    useState("connecting");
+
+  const [lastUpdated, setLastUpdated] =
+    useState(null);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
   const [nodes, setNodes, onNodesChange] =
     useNodesState(initialNodes);
 
@@ -813,19 +888,55 @@ function App() {
   useState("dashboard");
 
   const loadPipelineData = useCallback(async () => {
+
   try {
+
+    setRefreshing(true);
+
+    setConnectionStatus((current) =>
+      current === "connected"
+        ? "connected"
+        : "connecting"
+    );
+
     setError("");
 
-    const data = await getPipelineStatus();
+
+    const data =
+      await getPipelineStatus();
+
 
     setPipelineData(data);
-  } catch (err) {
-    console.error("Pipeline API error:", err);
 
-    setError("Unable to fetch pipeline metrics");
+    setConnectionStatus("connected");
+
+    setLastUpdated(
+      new Date()
+    );
+
+  } catch (err) {
+
+    console.error(
+      "Pipeline API error:",
+      err
+    );
+
+    setConnectionStatus(
+      "disconnected"
+    );
+
+    setError(
+      "Unable to fetch pipeline metrics"
+    );
+
   } finally {
+
     setLoading(false);
+
+    setRefreshing(false);
+
   }
+
 }, []);
 
   useEffect(() => {
@@ -868,7 +979,9 @@ function App() {
               ...node.data,
 
               metric:
-                kafka.eventsPerSecond.toLocaleString(),
+                formatNumber(
+                  kafka?.eventsPerSecond
+                ),
 
               status:
                 kafka.status,
@@ -887,7 +1000,11 @@ function App() {
               ...node.data,
 
               metric:
-                `${flink.processingRate.toLocaleString()}/s`,
+                flink?.processingRate != null
+                  ? `${formatNumber(
+                      flink.processingRate
+                    )}/s`
+                  : "—",
 
               status:
                 flink.status,
@@ -906,7 +1023,9 @@ function App() {
               ...node.data,
 
               metric:
-                iceberg.recordsStored.toLocaleString(),
+                formatNumber(
+                  iceberg?.recordsStored
+                ),
 
               status:
                 iceberg.status,
@@ -922,16 +1041,6 @@ function App() {
     );
 
   }, [pipelineData, setNodes]);
-
-  useEffect(() => {
-  const interval = setInterval(() => {
-    loadPipelineData();
-  }, 5000);
-
-  return () => {
-    clearInterval(interval);
-  };
-}, [loadPipelineData]);
 
 
   /* =========================
@@ -1020,11 +1129,16 @@ function App() {
     pipelineData.metrics;
 
   const pipelineHealth =
-    error
+    connectionStatus === "disconnected"
       ? "offline"
       : pipelineData?.overallStatus === "healthy"
       ? "healthy"
       : "degraded";
+
+  const lastUpdatedText =
+  lastUpdated
+    ? lastUpdated.toLocaleTimeString()
+    : "Not updated yet";
 
 function renderActiveView() {
   switch (activeView) {
@@ -1070,6 +1184,8 @@ function renderActiveView() {
         <Header
           activeView={activeView}
           pipelineHealth={pipelineHealth}
+          connectionStatus={connectionStatus}
+          refreshing={refreshing}
         />
 
 
@@ -1102,11 +1218,18 @@ function renderActiveView() {
               </div>
 
 
-              <button className="primary-button">
+              <button
+                type="button"
+                className="primary-button"
+                onClick={loadPipelineData}
+                disabled={refreshing}
+              >
 
                 <Play size={15} />
 
-                Live pipeline
+                {refreshing
+                  ? "Refreshing..."
+                  : "Refresh pipeline"}
 
               </button>
 
@@ -1155,7 +1278,7 @@ function renderActiveView() {
 
                 <div
                   className={`pipeline-status ${
-                    error
+                    pipelineHealth !== "healthy"
                       ? "pipeline-status-error"
                       : ""
                   }`}
@@ -1163,9 +1286,11 @@ function renderActiveView() {
 
                   <span></span>
 
-                  {error
-                    ? "Unavailable"
-                    : "Healthy"}
+                  {pipelineHealth === "healthy"
+                    ? "Healthy"
+                    : pipelineHealth === "degraded"
+                    ? "Degraded"
+                    : "Unavailable"}
 
                 </div>
 
@@ -1235,7 +1360,9 @@ function renderActiveView() {
                 icon={<Zap size={19} />}
                 label="Events / second"
                 value={
-                  metrics.eventsPerSecond.toLocaleString()
+                  formatNumber(
+                    metrics?.eventsPerSecond
+                  )
                 }
                 change="Live"
               />
@@ -1244,7 +1371,11 @@ function renderActiveView() {
               <MetricCard
                 icon={<Activity size={19} />}
                 label="Pipeline latency"
-                value={`${metrics.pipelineLatency} ms`}
+                value={
+                  metrics?.pipelineLatency != null
+                    ? `${metrics.pipelineLatency} ms`
+                    : "—"
+                }
                 change="Live"
               />
 
@@ -1252,7 +1383,11 @@ function renderActiveView() {
               <MetricCard
                 icon={<ShieldCheck size={19} />}
                 label="Data quality"
-                value={`${metrics.dataQuality}%`}
+                value={
+                  metrics?.dataQuality != null
+                    ? `${metrics.dataQuality}%`
+                    : "—"
+                }
                 change="Live"
               />
 
@@ -1261,7 +1396,9 @@ function renderActiveView() {
                 icon={<Boxes size={19} />}
                 label="Records processed"
                 value={
-                  metrics.recordsProcessed.toLocaleString()
+                  formatNumber(
+                    metrics?.recordsProcessed
+                  )
                 }
                 change="Live"
               />
@@ -1358,7 +1495,7 @@ function renderActiveView() {
 
               <div
                 className={`pipeline-status ${
-                  error
+                  pipelineHealth !== "healthy"
                     ? "pipeline-status-error"
                     : ""
                 }`}
@@ -1366,9 +1503,11 @@ function renderActiveView() {
 
                 <span></span>
 
-                {error
-                  ? "Unavailable"
-                  : "Healthy"}
+                {pipelineHealth === "healthy"
+                  ? "Healthy"
+                  : pipelineHealth === "degraded"
+                  ? "Degraded"
+                  : "Unavailable"}
 
               </div>
 
@@ -1436,9 +1575,10 @@ function renderActiveView() {
               icon={<Zap size={19} />}
               label="Kafka events / second"
               value={
-                pipelineData.services.kafka
-                  .eventsPerSecond
-                  .toLocaleString()
+                formatNumber(
+                  pipelineData?.services?.kafka
+                    ?.eventsPerSecond
+                )
               }
               change="Live"
             />
@@ -1448,9 +1588,13 @@ function renderActiveView() {
               icon={<Activity size={19} />}
               label="Flink processing rate"
               value={
-                `${pipelineData.services.flink
-                  .processingRate
-                  .toLocaleString()}/s`
+                pipelineData?.services?.flink
+                  ?.processingRate != null
+                  ? `${formatNumber(
+                      pipelineData.services.flink
+                        .processingRate
+                    )}/s`
+                  : "—"
               }
               change="Live"
             />
@@ -1460,7 +1604,9 @@ function renderActiveView() {
               icon={<Gauge size={19} />}
               label="Pipeline latency"
               value={
-                `${metrics.pipelineLatency} ms`
+                metrics?.pipelineLatency != null
+                  ? `${metrics.pipelineLatency} ms`
+                  : "—"
               }
               change="Live"
             />
@@ -1470,9 +1616,10 @@ function renderActiveView() {
               icon={<Database size={19} />}
               label="Iceberg records"
               value={
-                pipelineData.services.iceberg
-                  .recordsStored
-                  .toLocaleString()
+                formatNumber(
+                  pipelineData?.services?.iceberg
+                    ?.recordsStored
+                )
               }
               change="Live"
             />
@@ -1517,9 +1664,11 @@ function renderActiveView() {
               className="footer-live"
             ></span>
 
-            {error
-              ? "Offline"
-              : "Live"}
+            {connectionStatus === "connected"
+              ? "Live"
+              : connectionStatus === "connecting"
+              ? "Connecting"
+              : "Offline"}
 
             <span>•</span>
 
@@ -1534,9 +1683,11 @@ function renderActiveView() {
 
           <span>
 
-            {error
-              ? "Backend unavailable"
-              : "Live backend data"}
+            {connectionStatus === "connected"
+              ? `Last updated: ${lastUpdatedText}`
+              : connectionStatus === "connecting"
+              ? "Connecting to backend..."
+              : `Disconnected • Last successful update: ${lastUpdatedText}`}
 
           </span>
 
