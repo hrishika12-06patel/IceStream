@@ -29,6 +29,7 @@ import {
   Play,
   Settings,
   ShieldCheck,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -114,6 +115,165 @@ function PipelineNode({ data }) {
         position={Position.Right}
         className="node-handle"
       />
+    </div>
+  );
+}
+
+/* =============================
+   Pipeline Node Details Panel
+============================= */
+
+function NodeDetailsPanel({
+  node,
+  pipelineData,
+  onClose,
+}) {
+  if (!node) {
+    return null;
+  }
+
+  const variant =
+    node.data?.variant || node.id;
+
+  const service =
+    pipelineData?.services?.[variant] || {};
+
+  const rawStatus =
+    service.status ||
+    node.data?.status ||
+    "unknown";
+
+  const normalizedStatus =
+    String(rawStatus).toLowerCase();
+
+  let statusLabel = "Unknown";
+
+  if (
+    normalizedStatus === "healthy" ||
+    normalizedStatus === "running"
+  ) {
+    statusLabel = "Healthy";
+  } else if (
+    normalizedStatus === "degraded" ||
+    normalizedStatus === "warning"
+  ) {
+    statusLabel = "Degraded";
+  } else if (
+    normalizedStatus === "offline" ||
+    normalizedStatus === "unavailable" ||
+    normalizedStatus === "not_running"
+  ) {
+    statusLabel = "Offline";
+  }
+
+  let metricLabel =
+    node.data?.metricLabel || "Metric";
+
+  let metricValue =
+    node.data?.metric || "—";
+
+  if (variant === "kafka") {
+    metricLabel = "Events / second";
+
+    metricValue =
+      service.eventsPerSecond ?? "—";
+  }
+
+  if (variant === "flink") {
+    metricLabel = "Processing rate";
+
+    metricValue =
+      service.processingRate ?? "—";
+  }
+
+  if (variant === "iceberg") {
+    metricLabel = "Records stored";
+
+    metricValue =
+      service.recordsStored ?? "—";
+  }
+
+  return (
+    <div
+      className="node-details-overlay"
+      onClick={onClose}
+    >
+      <div
+        className={`node-details-panel ${variant}`}
+        onClick={(event) =>
+          event.stopPropagation()
+        }
+      >
+        <div className="node-details-header">
+          <div>
+            <div className="node-details-stage">
+              {node.data?.stage || "PIPELINE"}
+            </div>
+
+            <h3>
+              {node.data?.name || node.id}
+            </h3>
+          </div>
+
+          <button
+            type="button"
+            className="node-details-close"
+            onClick={onClose}
+            aria-label="Close node details"
+          >
+            <X size={17} />
+          </button>
+        </div>
+
+        <div className="node-details-status">
+          <span
+            className={`node-details-status-dot ${statusLabel.toLowerCase()}`}
+          ></span>
+
+          {statusLabel}
+        </div>
+
+        <p className="node-details-description">
+          {node.data?.description ||
+            "Pipeline service"}
+        </p>
+
+        <div className="node-details-metrics">
+          <div className="node-details-metric">
+            <span>
+              {metricLabel}
+            </span>
+
+            <strong>
+              {typeof metricValue === "number"
+                ? metricValue.toLocaleString()
+                : metricValue}
+            </strong>
+          </div>
+
+          <div className="node-details-metric">
+            <span>
+              Latency
+            </span>
+
+            <strong>
+              {service.latency != null
+                ? `${service.latency} ms`
+                : "—"}
+            </strong>
+          </div>
+        </div>
+
+        <div className="node-details-footer">
+          <span>
+            Pipeline component
+          </span>
+
+          <strong>
+            {variant.toUpperCase()}
+          </strong>
+        </div>
+      </div>
     </div>
   );
 }
@@ -885,7 +1045,10 @@ function App() {
     useEdgesState(initialEdges);
 
   const [activeView, setActiveView] =
-  useState("dashboard");
+    useState("dashboard");
+
+  const [selectedNodeId, setSelectedNodeId] =
+    useState(null);
 
   const loadPipelineData = useCallback(async () => {
 
@@ -1042,6 +1205,11 @@ function App() {
 
   }, [pipelineData, setNodes]);
 
+  const selectedNode =
+  nodes.find(
+    (node) =>
+      node.id === selectedNodeId
+  ) || null;
 
   /* =========================
      CONNECT REACT FLOW NODES
@@ -1061,6 +1229,12 @@ function App() {
     [setEdges]
   );
 
+  const handleNodeClick = useCallback(
+    (event, node) => {
+      setSelectedNodeId(node.id);
+    },
+    []
+  );
 
   /* =========================
      LOADING STATE
@@ -1306,6 +1480,7 @@ function renderActiveView() {
                   onNodesChange={onNodesChange}
                   onEdgesChange={onEdgesChange}
                   onConnect={onConnect}
+                  onNodeClick={handleNodeClick}
                   fitView
                   fitViewOptions={{
                     padding: 0.2,
@@ -1348,7 +1523,16 @@ function renderActiveView() {
               </div>
 
             </section>
-
+            
+            {selectedNode && (
+              <NodeDetailsPanel
+                node={selectedNode}
+                pipelineData={pipelineData}
+                onClose={() =>
+                  setSelectedNodeId(null)
+                }
+              />
+            )}
 
             {/* =========================
                 METRICS
