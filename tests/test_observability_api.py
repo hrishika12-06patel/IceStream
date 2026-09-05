@@ -13,16 +13,29 @@ from fastapi.testclient import TestClient
 
 from backend.app import app
 from backend.services.pipeline_metrics import (
+    clear_pipeline_metrics_history,
     get_data_quality_metrics,
     get_flink_runtime_metrics,
     get_incidents,
     get_iceberg_runtime_metrics,
     get_kafka_runtime_metrics,
     get_pipeline_metrics,
+    get_pipeline_metrics_history,
     get_pipeline_status,
+    set_pipeline_metrics_history_maxlen,
 )
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def reset_history_state():
+    clear_pipeline_metrics_history()
+    set_pipeline_metrics_history_maxlen(60)
+    yield
+    clear_pipeline_metrics_history()
+    set_pipeline_metrics_history_maxlen(60)
+
 
 
 # =========================================================
@@ -447,4 +460,147 @@ def test_cors_headers_allowed_origin():
     )
     assert response.status_code == 200
     assert response.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+
+# =========================================================
+# 11. Pipeline Metrics History Tests
+# =========================================================
+
+def test_metrics_history_empty_initial_state():
+    response = client.get("/api/pipeline/metrics/history")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 0
+    assert data["history"] == []
+
+
+def test_metrics_history_stores_snapshots_and_expected_structure():
+    mock_status = {
+        "overall_status": "healthy",
+        "components": {
+            "kafka": {"status": "healthy", "topic": "transactions", "partition_count": 3, "total_messages": 100},
+            "flink": {"status": "healthy", "jobs_running": 1, "taskmanagers": 1, "records_in": 100, "records_out": 100},
+            "iceberg": {"status": "healthy", "snapshot_count": 10, "latest_snapshot_id": "123", "record_count": 335},
+        },
+    }
+    with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status):
+        metrics_resp = client.get("/api/pipeline/metrics")
+        assert metrics_resp.status_code == 200
+
+        history_resp = client.get("/api/pipeline/metrics/history")
+        assert history_resp.status_code == 200
+        data = history_resp.json()
+
+        assert data["count"] == 1
+        assert len(data["history"]) == 1
+
+        entry = data["history"][0]
+        assert "timestamp" in entry
+        assert entry["source"] == "runtime"
+        assert entry["pipeline_status"] == "healthy"
+        assert entry["transactions_processed"] == 335
+        assert entry["valid_records"] is None
+        assert entry["invalid_records"] is None
+        assert entry["processing_errors"] == 0
+        assert entry["records_per_second"] is None
+
+
+def test_metrics_history_entries_contain_iso_timestamps():
+    from datetime import datetime
+    mock_status = {
+        "overall_status": "healthy",
+        "components": {
+            "kafka": {"status": "healthy", "topic": "transactions", "partition_count": 1, "total_messages": 10},
+            "flink": {"status": "healthy", "jobs_running": 1, "taskmanagers": 1, "records_in": 10, "records_out": 10},
+            "iceberg": {"status": "healthy", "snapshot_count": 1, "latest_snapshot_id": "1", "record_count": 10},
+        },
+    }
+    with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status):
+        client.get("/api/pipeline/metrics")
+
+    history_resp = client.get("/api/pipeline/metrics/history")
+    data = history_resp.json()
+    timestamp_str = data["history"][0]["timestamp"]
+
+    parsed_dt = datetime.fromisoformat(timestamp_str)
+    assert parsed_dt is not None
+
+
+def test_metrics_history_multiple_snapshots_chronological_order():
+    mock_status_1 = {
+        "overall_status": "healthy",
+        "components": {
+            "kafka": {"status": "healthy", "topic": "transactions", "partition_count": 1, "total_messages": 10},
+            "flink": {"status": "healthy", "jobs_running": 1, "taskmanagers": 1, "records_in": 10, "records_out": 10},
+            "iceberg": {"status": "healthy", "snapshot_count": 1, "latest_snapshot_id": "1", "record_count": 100},
+        },
+    }
+    mock_status_2 = {
+        "overall_status": "healthy",
+        "components": {
+            "kafka": {"status": "healthy", "topic": "transactions", "partition_count": 1, "total_messages": 20},
+            "flink": {"status": "healthy", "jobs_running": 1, "taskmanagers": 1, "records_in": 20, "records_out": 20},
+            "iceberg": {"status": "healthy", "snapshot_count": 2, "latest_snapshot_id": "2", "record_count": 200},
+        },
+    }
+
+    with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status_1):
+        client.get("/api/pipeline/metrics")
+
+    with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status_2):
+        client.get("/api/pipeline/metrics")
+
+    response = client.get("/api/pipeline/metrics/history")
+    data = response.json()
+    assert data["count"] == 2
+    assert data["history"][0]["transactions_processed"] == 100
+    assert data["history"][1]["transactions_processed"] == 200
+    assert data["history"][0]["timestamp"] <= data["history"][1]["timestamp"]
+
+
+def test_metrics_history_bounded_capacity_removes_oldest():
+    set_pipeline_metrics_history_maxlen(3)
+
+    for i in range(5):
+        mock_status = {
+            "overall_status": "healthy",
+            "components": {
+                "kafka": {"status": "healthy", "topic": "t", "partition_count": 1, "total_messages": i},
+                "flink": {"status": "healthy", "jobs_running": 1, "taskmanagers": 1, "records_in": i, "records_out": i},
+                "iceberg": {"status": "healthy", "snapshot_count": i, "latest_snapshot_id": str(i), "record_count": 100 + i},
+            },
+        }
+        with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status):
+            client.get("/api/pipeline/metrics")
+
+    response = client.get("/api/pipeline/metrics/history")
+    data = response.json()
+    assert data["count"] == 3
+    processed_values = [item["transactions_processed"] for item in data["history"]]
+    assert processed_values == [102, 103, 104]
+
+
+def test_metrics_history_handles_offline_snapshots_safely():
+    mock_status_offline = {
+        "overall_status": "unavailable",
+        "components": {
+            "kafka": {"status": "not_running", "topic": "transactions", "partition_count": None, "total_messages": None},
+            "flink": {"status": "not_running", "jobs_running": 0, "taskmanagers": None, "records_in": None, "records_out": None},
+            "iceberg": {"status": "unavailable", "snapshot_count": 0, "latest_snapshot_id": None, "record_count": None},
+        },
+    }
+
+    with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status_offline):
+        client.get("/api/pipeline/metrics")
+
+    response = client.get("/api/pipeline/metrics/history")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 1
+    snapshot = data["history"][0]
+    assert snapshot["source"] == "unavailable"
+    assert snapshot["pipeline_status"] == "unavailable"
+    assert snapshot["transactions_processed"] is None
+    assert snapshot["processing_errors"] is None
+
 

@@ -9,8 +9,14 @@ and lakehouse metadata inspection. Decoupled from FastAPI web routes for clean t
 import os
 import socket
 import logging
+import copy
+from collections import deque
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
+
+DEFAULT_MAX_METRICS_HISTORY_SIZE = 60
+_metrics_history: deque = deque(maxlen=DEFAULT_MAX_METRICS_HISTORY_SIZE)
+
 
 try:
     import urllib.request
@@ -530,7 +536,31 @@ def get_pipeline_status() -> Dict[str, Any]:
     }
 
 
-def get_pipeline_metrics() -> Dict[str, Any]:
+def record_pipeline_metrics_snapshot(metrics: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    Records a timestamped snapshot of metrics into the bounded in-memory history buffer.
+    Constructs an immutable/decoupled snapshot dictionary to avoid mutable side effects.
+    """
+    if metrics is None:
+        metrics = get_pipeline_metrics(record_snapshot=False)
+
+    snapshot = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "source": metrics.get("source", "unavailable"),
+        "metric_source": metrics.get("metric_source", "unavailable"),
+        "pipeline_status": metrics.get("pipeline_status"),
+        "transactions_processed": metrics.get("transactions_processed"),
+        "valid_records": metrics.get("valid_records"),
+        "invalid_records": metrics.get("invalid_records"),
+        "processing_errors": metrics.get("processing_errors"),
+        "records_per_second": metrics.get("records_per_second"),
+        "runtime": copy.deepcopy(metrics.get("runtime")),
+    }
+    _metrics_history.append(snapshot)
+    return snapshot
+
+
+def get_pipeline_metrics(record_snapshot: bool = True) -> Dict[str, Any]:
     """
     GET /api/pipeline/metrics service logic.
     Aggregates truthful record-level metrics applying strict source priority:
@@ -571,7 +601,7 @@ def get_pipeline_metrics() -> Dict[str, Any]:
 
     processing_errors = 0 if (transactions_processed is not None and transactions_processed >= 0) else None
 
-    return {
+    metrics = {
         "source": source,
         "metric_source": metric_source,
         "pipeline_status": overall,
@@ -599,6 +629,40 @@ def get_pipeline_metrics() -> Dict[str, Any]:
             },
         },
     }
+
+    if record_snapshot:
+        record_pipeline_metrics_snapshot(metrics)
+
+    return metrics
+
+
+def get_pipeline_metrics_history() -> Dict[str, Any]:
+    """
+    GET /api/pipeline/metrics/history service logic.
+    Returns stored timestamped metric snapshots.
+    """
+    snapshots = list(_metrics_history)
+    return {
+        "count": len(snapshots),
+        "history": snapshots,
+    }
+
+
+def clear_pipeline_metrics_history() -> None:
+    """
+    Clears the stored metrics history deque.
+    """
+    _metrics_history.clear()
+
+
+def set_pipeline_metrics_history_maxlen(maxlen: int) -> None:
+    """
+    Updates the maxlen bound of the metrics history deque.
+    """
+    global _metrics_history
+    existing = list(_metrics_history)
+    _metrics_history = deque(existing, maxlen=maxlen)
+
 
 
 def get_data_quality_metrics() -> Dict[str, Any]:
