@@ -50,7 +50,17 @@ function IncidentsView() {
 
 
   useEffect(() => {
-    loadIncidents();
+
+    const initialLoad =
+      setTimeout(() => {
+        loadIncidents();
+      }, 0);
+
+
+    return () => {
+      clearTimeout(initialLoad);
+    };
+
   }, [loadIncidents]);
 
 

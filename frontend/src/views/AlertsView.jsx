@@ -1,7 +1,6 @@
 import {
   Activity,
   AlertTriangle,
-  Bell,
   ShieldCheck,
 } from "lucide-react";
 

@@ -27,6 +27,7 @@ import {
   MessageSquareWarning,
   Network,
   Play,
+  Search,
   Settings,
   ShieldCheck,
   X,
@@ -40,14 +41,6 @@ import {
 import "@xyflow/react/dist/style.css";
 import "./App.css";
 
-import DataQualityPanel
-  from "./components/DataQualityPanel";
-
-import IncidentPanel
-  from "./components/IncidentPanel";
-
-import LakehousePanel
-  from "./components/LakehousePanel";
 
 import DataQualityView
   from "./views/DataQualityView";
@@ -603,13 +596,11 @@ function Sidebar({
 
 function Header({
   activeView,
-  pipelineHealth,
   connectionStatus,
   refreshing,
+  onOpenSearch,
 }) {
-  const healthy =
-    pipelineHealth === "healthy";
-
+  
   const viewLabels = {
   dashboard: {
     parent: "Dashboard",
@@ -698,6 +689,23 @@ return (
             : "Backend disconnected"}
 
         </div>
+
+        <button
+          type="button"
+          className="topbar-search"
+          onClick={onOpenSearch}
+          title="Search IceStream"
+        >
+          <Search size={15} />
+
+          <span>
+            Search
+          </span>
+
+          <kbd>
+            Ctrl K
+          </kbd>
+        </button>
 
         <button className="help-button">
           <CircleHelp size={17} />
@@ -1017,6 +1025,222 @@ function LatencyCard({
   );
 }
 
+/* =============================
+   Global Search Navigation
+============================= */
+
+const searchNavigationItems = [
+  {
+    label: "Dashboard",
+    view: "dashboard",
+    description:
+      "View the complete pipeline overview",
+  },
+  {
+    label: "Pipeline",
+    view: "pipeline",
+    description:
+      "Inspect Kafka, Flink and Iceberg",
+  },
+  {
+    label: "Data Quality",
+    view: "data-quality",
+    description:
+      "Monitor validation and quality",
+  },
+  {
+    label: "Alerts",
+    view: "alerts",
+    description:
+      "View pipeline alerts",
+  },
+  {
+    label: "Pipeline Nodes",
+    view: "pipeline",
+    description:
+      "Inspect streaming infrastructure nodes",
+  },
+  {
+    label: "Lakehouse",
+    view: "lakehouse",
+    description:
+      "Inspect Apache Iceberg storage",
+  },
+  {
+    label: "Metrics",
+    view: "metrics",
+    description:
+      "View pipeline metrics",
+  },
+  {
+    label: "Issues",
+    view: "incidents",
+    description:
+      "Review operational incidents",
+  },
+  {
+    label: "History",
+    view: "history",
+    description:
+      "View historical pipeline activity",
+  },
+  {
+    label: "Settings",
+    view: "settings",
+    description:
+      "Configure dashboard preferences",
+  },
+];
+
+
+function SearchPalette({
+  open,
+  query,
+  onQueryChange,
+  onClose,
+  onSelect,
+}) {
+
+  if (!open) {
+    return null;
+  }
+
+
+  const normalizedQuery =
+    query.trim().toLowerCase();
+
+
+  const filteredItems =
+    searchNavigationItems.filter(
+      (item) => {
+
+        const searchableText =
+          `${item.label} ${item.description}`
+            .toLowerCase();
+
+
+        return searchableText.includes(
+          normalizedQuery
+        );
+
+      }
+    );
+
+
+  return (
+    <div
+      className="search-overlay"
+      onClick={onClose}
+    >
+
+      <div
+        className="search-palette"
+        onClick={(event) =>
+          event.stopPropagation()
+        }
+      >
+
+        <div className="search-input-wrapper">
+
+          <Search size={17} />
+
+          <input
+            autoFocus
+            type="text"
+            value={query}
+            onChange={(event) =>
+              onQueryChange(
+                event.target.value
+              )
+            }
+            placeholder="Search IceStream..."
+          />
+
+          <span className="search-shortcut">
+            ESC
+          </span>
+
+        </div>
+
+
+        <div className="search-results">
+
+          {filteredItems.length === 0 ? (
+
+            <div className="search-empty">
+
+              <Search size={22} />
+
+              <strong>
+                No matching views
+              </strong>
+
+              <span>
+                Try searching for Pipeline,
+                Metrics, History or Alerts.
+              </span>
+
+            </div>
+
+          ) : (
+
+            filteredItems.map(
+              (item) => (
+
+                <button
+                  type="button"
+                  className="search-result"
+                  key={`${item.label}-${item.view}`}
+                  onClick={() =>
+                    onSelect(item.view)
+                  }
+                >
+
+                  <div>
+
+                    <strong>
+                      {item.label}
+                    </strong>
+
+                    <span>
+                      {item.description}
+                    </span>
+
+                  </div>
+
+
+                  <span className="search-result-arrow">
+                    →
+                  </span>
+
+                </button>
+
+              )
+            )
+
+          )}
+
+        </div>
+
+
+        <div className="search-footer">
+
+          <span>
+            Quick Navigation
+          </span>
+
+          <span>
+            Ctrl + K
+          </span>
+
+        </div>
+
+      </div>
+
+    </div>
+  );
+}
+
 /* -----------------------------
    Main App
 ----------------------------- */
@@ -1049,6 +1273,12 @@ function App() {
 
   const [selectedNodeId, setSelectedNodeId] =
     useState(null);
+
+  const [searchOpen, setSearchOpen] =
+    useState(false);
+
+  const [searchQuery, setSearchQuery] =
+    useState("");
 
   const loadPipelineData = useCallback(async () => {
 
@@ -1103,15 +1333,71 @@ function App() {
 }, []);
 
   useEffect(() => {
-  loadPipelineData();
 
-  const interval = setInterval(
-    loadPipelineData,
-    5000
-  );
+    const initialLoad =
+      setTimeout(() => {
+        loadPipelineData();
+      }, 0);
 
-  return () => clearInterval(interval);
-}, [loadPipelineData]);
+
+    const interval =
+      setInterval(() => {
+        loadPipelineData();
+      }, 5000);
+
+
+    return () => {
+      clearTimeout(initialLoad);
+      clearInterval(interval);
+    };
+
+  }, [loadPipelineData]);
+
+  useEffect(() => {
+
+    const handleSearchShortcut = (event) => {
+
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "k"
+      ) {
+
+        event.preventDefault();
+
+        setSearchOpen(true);
+
+      }
+
+
+      if (
+        event.key === "Escape"
+      ) {
+
+        setSearchOpen(false);
+
+        setSearchQuery("");
+
+      }
+
+    };
+
+
+    window.addEventListener(
+      "keydown",
+      handleSearchShortcut
+    );
+
+
+    return () => {
+
+      window.removeEventListener(
+        "keydown",
+        handleSearchShortcut
+      );
+
+    };
+
+  }, []);
 
   useEffect(() => {
 
@@ -1232,6 +1518,19 @@ function App() {
   const handleNodeClick = useCallback(
     (event, node) => {
       setSelectedNodeId(node.id);
+    },
+    []
+  );
+
+  const handleSearchNavigate = useCallback(
+    (view) => {
+
+      setActiveView(view);
+
+      setSearchOpen(false);
+
+      setSearchQuery("");
+
     },
     []
   );
@@ -1360,8 +1659,21 @@ function renderActiveView() {
           pipelineHealth={pipelineHealth}
           connectionStatus={connectionStatus}
           refreshing={refreshing}
+          onOpenSearch={() =>
+            setSearchOpen(true)
+          }
         />
 
+        <SearchPalette
+          open={searchOpen}
+          query={searchQuery}
+          onQueryChange={setSearchQuery}
+          onClose={() => {
+            setSearchOpen(false);
+            setSearchQuery("");
+          }}
+          onSelect={handleSearchNavigate}
+        />
 
         <main className="content">
 

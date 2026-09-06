@@ -50,7 +50,17 @@ function LakehouseView() {
 
 
   useEffect(() => {
-    loadLakehouse();
+
+    const initialLoad =
+      setTimeout(() => {
+        loadLakehouse();
+      }, 0);
+
+
+    return () => {
+      clearTimeout(initialLoad);
+    };
+
   }, [loadLakehouse]);
 
 
