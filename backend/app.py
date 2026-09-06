@@ -20,6 +20,7 @@ from backend.services.pipeline_metrics import (
     get_incidents,
     get_lakehouse_status,
     get_pipeline_metrics,
+    get_pipeline_metrics_history,
     get_pipeline_status,
 )
 
@@ -79,6 +80,25 @@ class PipelineMetricsResponse(BaseModel):
     processing_errors: Optional[int] = Field(None, examples=[0])
     records_per_second: Optional[float] = Field(None, examples=[120.5])
     runtime: Optional[Dict[str, Any]] = Field(None)
+
+
+class PipelineMetricsSnapshot(BaseModel):
+    timestamp: str = Field(..., examples=["2026-09-05T20:22:07.123456+00:00"])
+    source: str = Field("unavailable", examples=["runtime"])
+    metric_source: Optional[str] = Field("unavailable", examples=["iceberg_snapshot", "flink_rest", "kafka_offsets", "unavailable"])
+    pipeline_status: Optional[str] = Field(None, examples=["healthy"])
+    transactions_processed: Optional[int] = Field(None, examples=[1200])
+    valid_records: Optional[int] = Field(None, examples=[1180])
+    invalid_records: Optional[int] = Field(None, examples=[20])
+    processing_errors: Optional[int] = Field(None, examples=[0])
+    records_per_second: Optional[float] = Field(None, examples=[120.5])
+    runtime: Optional[Dict[str, Any]] = Field(None)
+
+
+class PipelineMetricsHistoryResponse(BaseModel):
+    count: int = Field(0, examples=[2])
+    history: List[PipelineMetricsSnapshot] = Field(default_factory=list)
+
 
 
 class DataQualityRule(BaseModel):
@@ -168,6 +188,15 @@ def pipeline_metrics():
     Exposes stream processing runtime metrics.
     """
     return get_pipeline_metrics()
+
+
+@app.get("/api/pipeline/metrics/history", response_model=PipelineMetricsHistoryResponse, tags=["Pipeline"])
+def pipeline_metrics_history():
+    """
+    Exposes bounded history of recent stream processing runtime metrics snapshots.
+    """
+    return get_pipeline_metrics_history()
+
 
 
 @app.get("/api/data-quality", response_model=DataQualityResponse, tags=["Data Quality"])
