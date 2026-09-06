@@ -50,7 +50,17 @@ function MetricsView() {
 
 
   useEffect(() => {
-    loadMetrics();
+
+    const initialLoad =
+      setTimeout(() => {
+        loadMetrics();
+      }, 0);
+
+
+    return () => {
+      clearTimeout(initialLoad);
+    };
+
   }, [loadMetrics]);
 
 

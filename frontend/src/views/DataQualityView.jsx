@@ -50,7 +50,17 @@ function DataQualityView() {
 
 
   useEffect(() => {
-    loadDataQuality();
+
+    const initialLoad =
+      setTimeout(() => {
+        loadDataQuality();
+      }, 0);
+
+
+    return () => {
+      clearTimeout(initialLoad);
+    };
+
   }, [loadDataQuality]);
 
 
