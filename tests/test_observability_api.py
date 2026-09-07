@@ -604,3 +604,127 @@ def test_metrics_history_handles_offline_snapshots_safely():
     assert snapshot["processing_errors"] is None
 
 
+# =========================================================
+# 12. Query Controls (limit) Tests for Pipeline Metrics History
+# =========================================================
+
+def helper_populate_history(n: int = 5):
+    """Helper to populate history with N distinct snapshots."""
+    for i in range(1, n + 1):
+        mock_status = {
+            "overall_status": "healthy",
+            "components": {
+                "kafka": {"status": "healthy", "topic": "transactions", "partition_count": 1, "total_messages": i * 10},
+                "flink": {"status": "healthy", "jobs_running": 1, "taskmanagers": 1, "records_in": i * 10, "records_out": i * 10},
+                "iceberg": {"status": "healthy", "snapshot_count": i, "latest_snapshot_id": str(i), "record_count": i * 100},
+            },
+        }
+        with patch("backend.services.pipeline_metrics.get_pipeline_status", return_value=mock_status):
+            client.get("/api/pipeline/metrics")
+
+
+def test_metrics_history_default_returns_all_snapshots():
+    helper_populate_history(5)
+    response = client.get("/api/pipeline/metrics/history")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 5
+    assert len(data["history"]) == 5
+    assert [s["transactions_processed"] for s in data["history"]] == [100, 200, 300, 400, 500]
+
+
+def test_metrics_history_limit_1_returns_latest_snapshot():
+    helper_populate_history(5)
+    response = client.get("/api/pipeline/metrics/history?limit=1")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 1
+    assert len(data["history"]) == 1
+    assert data["history"][0]["transactions_processed"] == 500
+
+
+def test_metrics_history_limit_10_returns_latest_available_up_to_10():
+    helper_populate_history(5)
+    response = client.get("/api/pipeline/metrics/history?limit=10")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 5
+    assert len(data["history"]) == 5
+    assert [s["transactions_processed"] for s in data["history"]] == [100, 200, 300, 400, 500]
+
+
+def test_metrics_history_limit_exceeding_maximum_returns_validation_error():
+    response = client.get("/api/pipeline/metrics/history?limit=61")
+    assert response.status_code == 422
+
+
+def test_metrics_history_limit_below_minimum_returns_validation_error():
+    response = client.get("/api/pipeline/metrics/history?limit=0")
+    assert response.status_code == 422
+
+    response_neg = client.get("/api/pipeline/metrics/history?limit=-5")
+    assert response_neg.status_code == 422
+
+
+def test_metrics_history_limit_preserves_chronological_ordering():
+    helper_populate_history(5)
+    response = client.get("/api/pipeline/metrics/history?limit=3")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 3
+    history = data["history"]
+    assert history[0]["transactions_processed"] == 300
+    assert history[1]["transactions_processed"] == 400
+    assert history[2]["transactions_processed"] == 500
+    assert history[0]["timestamp"] <= history[1]["timestamp"] <= history[2]["timestamp"]
+
+
+def test_metrics_history_limit_returns_latest_n_not_oldest_n():
+    helper_populate_history(5)
+    response = client.get("/api/pipeline/metrics/history?limit=3")
+    assert response.status_code == 200
+    data = response.json()
+    processed_values = [s["transactions_processed"] for s in data["history"]]
+    assert processed_values == [300, 400, 500]
+    assert processed_values != [100, 200, 300]
+
+
+def test_metrics_history_empty_history_returns_zero_count_and_empty_list():
+    response = client.get("/api/pipeline/metrics/history?limit=5")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 0
+    assert data["history"] == []
+
+
+def test_metrics_history_snapshot_fields_preserved_with_limit():
+    helper_populate_history(1)
+    response = client.get("/api/pipeline/metrics/history?limit=1")
+    assert response.status_code == 200
+    data = response.json()
+    snapshot = data["history"][0]
+
+    expected_fields = {
+        "timestamp",
+        "source",
+        "metric_source",
+        "pipeline_status",
+        "transactions_processed",
+        "valid_records",
+        "invalid_records",
+        "processing_errors",
+        "records_per_second",
+        "runtime",
+    }
+    assert expected_fields.issubset(snapshot.keys())
+
+
+def test_metrics_history_service_direct_call_validation():
+    with pytest.raises(ValueError, match="limit must be between 1 and 60"):
+        get_pipeline_metrics_history(limit=0)
+
+    with pytest.raises(ValueError, match="limit must be between 1 and 60"):
+        get_pipeline_metrics_history(limit=61)
+
+
+

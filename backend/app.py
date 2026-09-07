@@ -9,12 +9,13 @@ and Apache Iceberg lakehouse storage monitoring.
 import logging
 import os
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.services.pipeline_metrics import (
+    DEFAULT_MAX_METRICS_HISTORY_SIZE,
     get_data_quality_metrics,
     get_health_status,
     get_incidents,
@@ -191,11 +192,18 @@ def pipeline_metrics():
 
 
 @app.get("/api/pipeline/metrics/history", response_model=PipelineMetricsHistoryResponse, tags=["Pipeline"])
-def pipeline_metrics_history():
+def pipeline_metrics_history(
+    limit: Optional[int] = Query(
+        None,
+        ge=1,
+        le=DEFAULT_MAX_METRICS_HISTORY_SIZE,
+        description="Optional limit to retrieve only the latest N metric snapshots (1 to 60)."
+    )
+):
     """
     Exposes bounded history of recent stream processing runtime metrics snapshots.
     """
-    return get_pipeline_metrics_history()
+    return get_pipeline_metrics_history(limit=limit)
 
 
 

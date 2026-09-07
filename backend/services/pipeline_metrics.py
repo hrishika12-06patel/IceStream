@@ -636,12 +636,19 @@ def get_pipeline_metrics(record_snapshot: bool = True) -> Dict[str, Any]:
     return metrics
 
 
-def get_pipeline_metrics_history() -> Dict[str, Any]:
+def get_pipeline_metrics_history(limit: Optional[int] = None) -> Dict[str, Any]:
     """
     GET /api/pipeline/metrics/history service logic.
     Returns stored timestamped metric snapshots.
+    If limit is provided, returns only the latest N snapshots in chronological order.
     """
-    snapshots = list(_metrics_history)
+    if limit is not None:
+        if limit < 1 or limit > DEFAULT_MAX_METRICS_HISTORY_SIZE:
+            raise ValueError(f"limit must be between 1 and {DEFAULT_MAX_METRICS_HISTORY_SIZE}")
+        snapshots = list(_metrics_history)[-limit:]
+    else:
+        snapshots = list(_metrics_history)
+
     return {
         "count": len(snapshots),
         "history": snapshots,
