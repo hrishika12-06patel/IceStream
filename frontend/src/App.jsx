@@ -69,7 +69,11 @@ import HistoryView
 
 function PipelineNode({ data }) {
   return (
-    <div className={`pipeline-node ${data.variant}`}>
+    <div
+      className={`pipeline-node ${data.variant} ${
+        data.focusState || ""
+      }`}
+    >
       <Handle
         type="target"
         position={Position.Left}
@@ -120,6 +124,7 @@ function NodeDetailsPanel({
   node,
   pipelineData,
   onClose,
+  onFocus,
 }) {
   if (!node) {
     return null;
@@ -256,6 +261,16 @@ function NodeDetailsPanel({
             </strong>
           </div>
         </div>
+
+        <button
+          type="button"
+          className="node-focus-button"
+          onClick={() =>
+            onFocus(variant)
+          }
+        >
+          Focus in pipeline
+        </button>
 
         <div className="node-details-footer">
           <span>
@@ -1241,6 +1256,98 @@ function SearchPalette({
   );
 }
 
+/* =============================
+   Pipeline Filter Bar
+============================= */
+
+function PipelineFilterBar({
+  value,
+  onChange,
+}) {
+
+  const filterText = {
+    all: "Showing complete pipeline",
+    kafka: "Focusing on Kafka ingestion",
+    flink: "Focusing on Flink processing",
+    iceberg: "Focusing on Iceberg storage",
+  };
+
+
+  return (
+    <div className="pipeline-filter-bar">
+
+      <div className="pipeline-filter-buttons">
+
+        <button
+          type="button"
+          className={`pipeline-filter-button ${
+            value === "all"
+              ? "active"
+              : ""
+          }`}
+          onClick={() =>
+            onChange("all")
+          }
+        >
+          All
+        </button>
+
+
+        <button
+          type="button"
+          className={`pipeline-filter-button ${
+            value === "kafka"
+              ? "active"
+              : ""
+          }`}
+          onClick={() =>
+            onChange("kafka")
+          }
+        >
+          Kafka
+        </button>
+
+
+        <button
+          type="button"
+          className={`pipeline-filter-button ${
+            value === "flink"
+              ? "active"
+              : ""
+          }`}
+          onClick={() =>
+            onChange("flink")
+          }
+        >
+          Flink
+        </button>
+
+
+        <button
+          type="button"
+          className={`pipeline-filter-button ${
+            value === "iceberg"
+              ? "active"
+              : ""
+          }`}
+          onClick={() =>
+            onChange("iceberg")
+          }
+        >
+          Iceberg
+        </button>
+
+      </div>
+
+
+      <span className="pipeline-filter-context">
+        {filterText[value]}
+      </span>
+
+    </div>
+  );
+}
+
 /* -----------------------------
    Main App
 ----------------------------- */
@@ -1273,6 +1380,9 @@ function App() {
 
   const [selectedNodeId, setSelectedNodeId] =
     useState(null);
+
+  const [pipelineFilter, setPipelineFilter] =
+    useState("all");
 
   const [searchOpen, setSearchOpen] =
     useState(false);
@@ -1496,6 +1606,93 @@ function App() {
     (node) =>
       node.id === selectedNodeId
   ) || null;
+
+  const focusedNodes =
+    nodes.map((node) => {
+
+      let focusState = "";
+
+      if (pipelineFilter !== "all") {
+
+        focusState =
+          node.id === pipelineFilter
+            ? "focused"
+            : "dimmed";
+
+      }
+
+      return {
+        ...node,
+
+        data: {
+          ...node.data,
+          focusState,
+        },
+      };
+
+    });
+
+  const focusedEdges =
+    edges.map((edge) => {
+
+      let relevant = true;
+
+
+      if (pipelineFilter === "kafka") {
+
+        relevant =
+          edge.id === "kafka-flink";
+
+      }
+
+
+      if (pipelineFilter === "flink") {
+
+        relevant =
+          edge.id === "kafka-flink" ||
+          edge.id === "flink-iceberg";
+
+      }
+
+
+      if (pipelineFilter === "iceberg") {
+
+        relevant =
+          edge.id === "flink-iceberg";
+
+      }
+
+
+      const allSelected =
+        pipelineFilter === "all";
+
+
+      return {
+        ...edge,
+
+        animated:
+          allSelected || relevant,
+
+        style: {
+          ...edge.style,
+
+          strokeWidth:
+            allSelected
+              ? 2
+              : relevant
+              ? 3
+              : 1.5,
+
+          opacity:
+            allSelected
+              ? 1
+              : relevant
+              ? 1
+              : 0.18,
+        },
+      };
+
+    });
 
   /* =========================
      CONNECT REACT FLOW NODES
@@ -1782,17 +1979,25 @@ function renderActiveView() {
 
               </div>
 
+              <PipelineFilterBar
+                value={pipelineFilter}
+                onChange={setPipelineFilter}
+              />
 
               <div className="flow-container">
 
                 <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
+                  nodes={focusedNodes}
+                  edges={focusedEdges}
                   nodeTypes={nodeTypes}
                   onNodesChange={onNodesChange}
                   onEdgesChange={onEdgesChange}
                   onConnect={onConnect}
                   onNodeClick={handleNodeClick}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                  }}
                   fitView
                   fitViewOptions={{
                     padding: 0.2,
@@ -1843,6 +2048,13 @@ function renderActiveView() {
                 onClose={() =>
                   setSelectedNodeId(null)
                 }
+                onFocus={(nodeId) => {
+
+                  setPipelineFilter(nodeId);
+
+                  setSelectedNodeId(null);
+
+                }}
               />
             )}
 
@@ -2009,16 +2221,25 @@ function renderActiveView() {
 
             </div>
 
+            <PipelineFilterBar
+              value={pipelineFilter}
+              onChange={setPipelineFilter}
+            />
 
             <div className="flow-container">
 
               <ReactFlow
-                nodes={nodes}
-                edges={edges}
+                nodes={focusedNodes}
+                edges={focusedEdges}
                 nodeTypes={nodeTypes}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
+                onNodeClick={handleNodeClick}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                }}
                 fitView
                 fitViewOptions={{
                   padding: 0.2,
@@ -2062,6 +2283,22 @@ function renderActiveView() {
 
           </section>
 
+          {selectedNode && (
+            <NodeDetailsPanel
+              node={selectedNode}
+              pipelineData={pipelineData}
+              onClose={() =>
+                setSelectedNodeId(null)
+              }
+              onFocus={(nodeId) => {
+
+                setPipelineFilter(nodeId);
+
+                setSelectedNodeId(null);
+
+              }}
+            />
+          )}
 
           {/* Pipeline metrics */}
 

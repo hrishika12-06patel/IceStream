@@ -287,6 +287,8 @@
 
   min-height: 100vh;
 
+  min-width: 0;
+
   background:
     radial-gradient(
       circle at 70% 0%,
@@ -416,6 +418,7 @@
 ========================= */
 
 .content {
+  width: 100%;
   max-width: 1450px;
 
   margin: 0 auto;
@@ -560,6 +563,9 @@
 ========================= */
 
 .pipeline-card {
+  width: 100%;
+  min-width: 0;
+  display: block;
   overflow: hidden;
 }
 
@@ -596,14 +602,16 @@
 }
 
 .flow-container {
-  
+  position: relative;
+
   width: 100%;
   height: 390px;
 
-  min-width: 0;
+  min-width: 300px;
   min-height: 390px;
 
-  position: relative;
+  flex: 0 0 auto;
+  overflow: hidden;
 
   background:
     radial-gradient(
@@ -4096,13 +4104,206 @@
 
 }
 
-.flow-container .react-flow {
-  width: 100%;
-  height: 100%;
+.flow-container > .react-flow {
+  position: absolute;
+  inset: 0;
+
+  width: 100% !important;
+  height: 100% !important;
 }
 
-.pipeline-card {
+
+/* =========================
+    PIPELINE FOCUS MODE
+========================= */
+
+.pipeline-filter-bar {
+  min-height: 48px;
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 16px;
+
+  padding: 8px 17px;
+
+  border-bottom:
+    1px solid #17243a;
+
+  background:
+    rgba(9, 17, 31, 0.65);
+}
+
+
+.pipeline-filter-buttons {
+  display: flex;
+  align-items: center;
+
+  gap: 6px;
+
+  flex-wrap: wrap;
+}
+
+
+.pipeline-filter-button {
+  padding: 6px 10px;
+
+  border:
+    1px solid #24334b;
+
+  border-radius: 7px;
+
+  background: #0d1728;
+
+  color: #71809a;
+
+  font-size: 8px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+
+.pipeline-filter-button:hover {
+  color: #dbe5f5;
+
+  border-color: #315078;
+
+  background: #111d30;
+}
+
+
+.pipeline-filter-button.active {
+  color: #ffffff;
+
+  border-color: #3b82f6;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(37, 99, 235, 0.28),
+      rgba(79, 70, 229, 0.22)
+    );
+
+  box-shadow:
+    0 0 15px
+    rgba(37, 99, 235, 0.12);
+}
+
+
+.pipeline-filter-context {
+  color: #52627b;
+
+  font-size: 8px;
+
+  white-space: nowrap;
+}
+
+
+/* =========================
+   FOCUSED NODES
+========================= */
+
+.pipeline-node.focused {
+  opacity: 1;
+
+  transform:
+    translateY(-2px)
+    scale(1.02);
+
+  border-color: #60a5fa;
+
+  box-shadow:
+    0 0 0 1px
+    rgba(96, 165, 250, 0.25),
+    0 15px 45px
+    rgba(37, 99, 235, 0.24);
+}
+
+
+.pipeline-node.dimmed {
+  opacity: 0.42;
+
+  filter:
+    saturate(0.55);
+
+  transform: scale(0.98);
+}
+
+
+.pipeline-node.dimmed:hover {
+  opacity: 0.72;
+}
+
+
+/* =========================
+   NODE FOCUS BUTTON
+========================= */
+
+.node-focus-button {
   width: 100%;
-  min-width: 0;
-  overflow: hidden;
+
+  margin-top: 18px;
+
+  padding: 9px 12px;
+
+  border:
+    1px solid #29456c;
+
+  border-radius: 8px;
+
+  background:
+    rgba(37, 99, 235, 0.1);
+
+  color: #7db5ff;
+
+  font-size: 9px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+
+.node-focus-button:hover {
+  color: #ffffff;
+
+  border-color: #3b82f6;
+
+  background:
+    rgba(37, 99, 235, 0.2);
+}
+
+
+/* =========================
+   MOBILE FILTER
+========================= */
+
+@media (max-width: 800px) {
+
+  .pipeline-filter-bar {
+    align-items: flex-start;
+
+    flex-direction: column;
+  }
+
+
+  .pipeline-filter-buttons {
+    width: 100%;
+  }
+
+
+  .pipeline-filter-button {
+    flex: 1;
+  }
+
+
+  .pipeline-filter-context {
+    white-space: normal;
+  }
+
 }
