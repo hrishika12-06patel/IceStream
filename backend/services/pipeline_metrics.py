@@ -11,10 +11,11 @@ import socket
 import logging
 import copy
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 DEFAULT_MAX_METRICS_HISTORY_SIZE = 60
+DEFAULT_MAX_METRICS_MINUTES_RANGE = 60
 _metrics_history: deque = deque(maxlen=DEFAULT_MAX_METRICS_HISTORY_SIZE)
 
 
@@ -636,18 +637,44 @@ def get_pipeline_metrics(record_snapshot: bool = True) -> Dict[str, Any]:
     return metrics
 
 
-def get_pipeline_metrics_history(limit: Optional[int] = None) -> Dict[str, Any]:
+def get_pipeline_metrics_history(
+    limit: Optional[int] = None,
+    minutes: Optional[int] = None,
+) -> Dict[str, Any]:
     """
     GET /api/pipeline/metrics/history service logic.
     Returns stored timestamped metric snapshots.
-    If limit is provided, returns only the latest N snapshots in chronological order.
+    If minutes is provided, filters snapshots to those within the recent UTC time window.
+    If limit is provided, returns only the latest N matching snapshots in chronological order.
     """
+    snapshots = list(_metrics_history)
+
+    if minutes is not None:
+        if minutes < 1 or minutes > DEFAULT_MAX_METRICS_MINUTES_RANGE:
+            raise ValueError(f"minutes must be between 1 and {DEFAULT_MAX_METRICS_MINUTES_RANGE}")
+        now_utc = datetime.now(timezone.utc)
+        cutoff_utc = now_utc - timedelta(minutes=minutes)
+
+        filtered = []
+        for snap in snapshots:
+            ts_str = snap.get("timestamp")
+            if not ts_str:
+                continue
+            try:
+                clean_ts = ts_str.replace("Z", "+00:00")
+                dt = datetime.fromisoformat(clean_ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                if dt >= cutoff_utc:
+                    filtered.append(snap)
+            except (ValueError, TypeError):
+                continue
+        snapshots = filtered
+
     if limit is not None:
         if limit < 1 or limit > DEFAULT_MAX_METRICS_HISTORY_SIZE:
             raise ValueError(f"limit must be between 1 and {DEFAULT_MAX_METRICS_HISTORY_SIZE}")
-        snapshots = list(_metrics_history)[-limit:]
-    else:
-        snapshots = list(_metrics_history)
+        snapshots = snapshots[-limit:]
 
     return {
         "count": len(snapshots),

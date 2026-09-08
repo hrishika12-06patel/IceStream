@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from backend.services.pipeline_metrics import (
     DEFAULT_MAX_METRICS_HISTORY_SIZE,
+    DEFAULT_MAX_METRICS_MINUTES_RANGE,
     get_data_quality_metrics,
     get_health_status,
     get_incidents,
@@ -198,12 +199,18 @@ def pipeline_metrics_history(
         ge=1,
         le=DEFAULT_MAX_METRICS_HISTORY_SIZE,
         description="Optional limit to retrieve only the latest N metric snapshots (1 to 60)."
+    ),
+    minutes: Optional[int] = Query(
+        None,
+        ge=1,
+        le=DEFAULT_MAX_METRICS_MINUTES_RANGE,
+        description="Optional recent time range in minutes to filter metric snapshots (1 to 60)."
     )
 ):
     """
     Exposes bounded history of recent stream processing runtime metrics snapshots.
     """
-    return get_pipeline_metrics_history(limit=limit)
+    return get_pipeline_metrics_history(limit=limit, minutes=minutes)
 
 
 

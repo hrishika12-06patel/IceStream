@@ -726,5 +726,163 @@ def test_metrics_history_service_direct_call_validation():
     with pytest.raises(ValueError, match="limit must be between 1 and 60"):
         get_pipeline_metrics_history(limit=61)
 
+    with pytest.raises(ValueError, match="minutes must be between 1 and 60"):
+        get_pipeline_metrics_history(minutes=0)
+
+    with pytest.raises(ValueError, match="minutes must be between 1 and 60"):
+        get_pipeline_metrics_history(minutes=61)
+
+
+# =========================================================
+# 13. Time-Range (minutes) Filtering Tests for Metrics History
+# =========================================================
+
+def helper_inject_snapshot_at_offset(minutes_ago: float, transactions_processed: int):
+    from datetime import datetime, timezone, timedelta
+    from backend.services.pipeline_metrics import _metrics_history
+    now_utc = datetime.now(timezone.utc)
+    ts = (now_utc - timedelta(minutes=minutes_ago)).isoformat()
+    snapshot = {
+        "timestamp": ts,
+        "source": "runtime",
+        "metric_source": "iceberg_snapshot",
+        "pipeline_status": "healthy",
+        "transactions_processed": transactions_processed,
+        "valid_records": None,
+        "invalid_records": None,
+        "processing_errors": 0,
+        "records_per_second": None,
+        "runtime": {},
+    }
+    _metrics_history.append(snapshot)
+    return snapshot
+
+
+def test_metrics_history_no_minutes_param_preserves_existing_behavior():
+    helper_inject_snapshot_at_offset(30.0, 100)
+    helper_inject_snapshot_at_offset(10.0, 200)
+    helper_inject_snapshot_at_offset(0.5, 300)
+
+    response = client.get("/api/pipeline/metrics/history")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 3
+    assert [s["transactions_processed"] for s in data["history"]] == [100, 200, 300]
+
+
+def test_metrics_history_minutes_1_returns_only_last_minute_snapshots():
+    helper_inject_snapshot_at_offset(10.0, 100)
+    helper_inject_snapshot_at_offset(5.0, 200)
+    helper_inject_snapshot_at_offset(0.2, 300)
+
+    response = client.get("/api/pipeline/metrics/history?minutes=1")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 1
+    assert len(data["history"]) == 1
+    assert data["history"][0]["transactions_processed"] == 300
+
+
+def test_metrics_history_valid_larger_window():
+    helper_inject_snapshot_at_offset(45.0, 100)
+    helper_inject_snapshot_at_offset(20.0, 200)
+    helper_inject_snapshot_at_offset(5.0, 300)
+    helper_inject_snapshot_at_offset(0.1, 400)
+
+    response = client.get("/api/pipeline/metrics/history?minutes=30")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 3
+    assert [s["transactions_processed"] for s in data["history"]] == [200, 300, 400]
+
+
+def test_metrics_history_minutes_below_minimum_returns_422():
+    response = client.get("/api/pipeline/metrics/history?minutes=0")
+    assert response.status_code == 422
+
+    response_neg = client.get("/api/pipeline/metrics/history?minutes=-5")
+    assert response_neg.status_code == 422
+
+
+def test_metrics_history_minutes_above_maximum_returns_422():
+    response = client.get("/api/pipeline/metrics/history?minutes=61")
+    assert response.status_code == 422
+
+
+def test_metrics_history_no_snapshots_within_range_returns_empty():
+    helper_inject_snapshot_at_offset(25.0, 100)
+
+    response = client.get("/api/pipeline/metrics/history?minutes=5")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 0
+    assert data["history"] == []
+
+
+def test_metrics_history_combination_minutes_and_limit():
+    helper_inject_snapshot_at_offset(50.0, 10)
+    helper_inject_snapshot_at_offset(12.0, 20)
+    helper_inject_snapshot_at_offset(10.0, 30)
+    helper_inject_snapshot_at_offset(8.0, 40)
+    helper_inject_snapshot_at_offset(6.0, 50)
+    helper_inject_snapshot_at_offset(2.0, 60)
+
+    response = client.get("/api/pipeline/metrics/history?minutes=15&limit=3")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["count"] == 3
+    assert [s["transactions_processed"] for s in data["history"]] == [40, 50, 60]
+
+
+def test_metrics_history_chronological_ordering_preserved_with_minutes():
+    helper_inject_snapshot_at_offset(15.0, 100)
+    helper_inject_snapshot_at_offset(10.0, 200)
+    helper_inject_snapshot_at_offset(5.0, 300)
+
+    response = client.get("/api/pipeline/metrics/history?minutes=20")
+    assert response.status_code == 200
+    data = response.json()
+    history = data["history"]
+    assert len(history) == 3
+    assert history[0]["timestamp"] <= history[1]["timestamp"] <= history[2]["timestamp"]
+
+
+def test_metrics_history_latest_n_after_filtering_not_oldest_n():
+    helper_inject_snapshot_at_offset(12.0, 100)
+    helper_inject_snapshot_at_offset(10.0, 200)
+    helper_inject_snapshot_at_offset(8.0, 300)
+    helper_inject_snapshot_at_offset(5.0, 400)
+    helper_inject_snapshot_at_offset(2.0, 500)
+
+    response = client.get("/api/pipeline/metrics/history?minutes=15&limit=2")
+    assert response.status_code == 200
+    data = response.json()
+    processed_values = [s["transactions_processed"] for s in data["history"]]
+    assert processed_values == [400, 500]
+    assert processed_values != [100, 200]
+
+
+def test_metrics_history_boundary_handling_exact_cutoff():
+    from datetime import datetime, timezone, timedelta
+    from backend.services.pipeline_metrics import _metrics_history
+
+    fixed_now = datetime(2026, 9, 8, 12, 0, 0, tzinfo=timezone.utc)
+    exact_cutoff_ts = (fixed_now - timedelta(minutes=5)).isoformat()
+    inside_ts = (fixed_now - timedelta(minutes=2)).isoformat()
+    outside_ts = (fixed_now - timedelta(minutes=5, seconds=1)).isoformat()
+
+    _metrics_history.append({"timestamp": outside_ts, "transactions_processed": 10, "source": "runtime"})
+    _metrics_history.append({"timestamp": exact_cutoff_ts, "transactions_processed": 20, "source": "runtime"})
+    _metrics_history.append({"timestamp": inside_ts, "transactions_processed": 30, "source": "runtime"})
+
+    with patch("backend.services.pipeline_metrics.datetime") as mock_datetime:
+        mock_datetime.now.return_value = fixed_now
+        mock_datetime.fromisoformat.side_effect = datetime.fromisoformat
+
+        result = get_pipeline_metrics_history(minutes=5)
+        assert result["count"] == 2
+        assert [s["transactions_processed"] for s in result["history"]] == [20, 30]
+
+
 
 
