@@ -4307,3 +4307,189 @@
   }
 
 }
+
+/* =========================
+    METRICS HISTORY
+========================= */
+
+.history-card {
+  margin-top: 14px;
+  overflow: hidden;
+}
+
+.history-card-header {
+  gap: 15px;
+}
+
+.history-refresh-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 6px;
+
+  padding: 7px 10px;
+
+  border: 1px solid #24334b;
+
+  border-radius: 7px;
+
+  background: #0d1728;
+
+  color: #7f8fa8;
+
+  font-size: 8px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: 0.2s ease;
+}
+
+.history-refresh-button:hover {
+  color: #ffffff;
+  border-color: #3b82f6;
+  background: #111d30;
+}
+
+.history-summary-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(4, 1fr);
+
+  gap: 10px;
+
+  padding: 14px 17px 0;
+}
+
+.history-summary-item {
+  padding: 12px;
+
+  border: 1px solid #17243a;
+
+  border-radius: 8px;
+
+  background:
+    rgba(13, 23, 40, 0.62);
+}
+
+.history-summary-item span {
+  display: block;
+  color: #586981;
+  font-size: 8px;
+}
+
+.history-summary-item strong {
+  display: block;
+
+  margin-top: 5px;
+
+  color: #e2e8f0;
+
+  font-size: 15px;
+}
+
+.history-chart-wrapper {
+  padding: 18px 17px 15px;
+}
+
+.history-chart-label {
+  margin-bottom: 10px;
+
+  color: #71809a;
+
+  font-size: 8px;
+  font-weight: 600;
+
+  text-transform: uppercase;
+
+  letter-spacing: 0.8px;
+}
+
+.history-chart-svg {
+  width: 100%;
+  height: 220px;
+
+  display: block;
+
+  overflow: visible;
+}
+
+.history-axis {
+  stroke: #24334b;
+  stroke-width: 1;
+}
+
+.history-line {
+  fill: none;
+
+  stroke: #3b82f6;
+
+  stroke-width: 3;
+
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.history-time-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  margin-top: 8px;
+
+  color: #52627b;
+
+  font-size: 8px;
+}
+
+.history-state {
+  min-height: 190px;
+
+  display: flex;
+  flex-direction: column;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+
+  padding: 25px;
+
+  text-align: center;
+
+  color: #607089;
+
+  font-size: 9px;
+}
+
+.history-state strong {
+  color: #cbd5e1;
+  font-size: 11px;
+}
+
+.history-state-error {
+  color: #f87171;
+}
+
+@media (max-width: 1100px) {
+
+  .history-summary-grid {
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+}
+
+@media (max-width: 800px) {
+
+  .history-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .history-chart-svg {
+    height: 180px;
+  }
+
+}
