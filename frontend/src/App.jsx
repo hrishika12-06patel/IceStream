@@ -36,6 +36,7 @@ import {
 
 import {
   getPipelineStatus,
+  getPipelineMetricsHistory,
 } from "./api/pipelineApi";
 
 import "@xyflow/react/dist/style.css";
@@ -62,6 +63,9 @@ import SettingsView
 
 import HistoryView
   from "./views/HistoryView";
+
+import MetricsHistoryChart
+  from "./components/MetricsHistoryChart";
 
 /* -----------------------------
    Pipeline Custom Node
@@ -1384,6 +1388,23 @@ function App() {
   const [pipelineFilter, setPipelineFilter] =
     useState("all");
 
+  const [
+    metricsHistory,
+    setMetricsHistory,
+  ] = useState([]);
+
+
+  const [
+    historyLoading,
+    setHistoryLoading,
+  ] = useState(true);
+
+
+  const [
+    historyError,
+    setHistoryError,
+  ] = useState("");
+
   const [searchOpen, setSearchOpen] =
     useState(false);
 
@@ -1442,6 +1463,48 @@ function App() {
 
 }, []);
 
+const loadMetricsHistory =
+  useCallback(async () => {
+
+    try {
+
+      setHistoryLoading(true);
+
+      setHistoryError("");
+
+
+      const data =
+        await getPipelineMetricsHistory(
+          20
+        );
+
+
+      setMetricsHistory(
+        Array.isArray(data?.history)
+          ? data.history
+          : []
+      );
+
+    } catch (err) {
+
+      console.error(
+        "Pipeline history API error:",
+        err
+      );
+
+
+      setHistoryError(
+        "Unable to load pipeline metrics history"
+      );
+
+    } finally {
+
+      setHistoryLoading(false);
+
+    }
+
+  }, []);
+
   useEffect(() => {
 
     const initialLoad =
@@ -1462,6 +1525,26 @@ function App() {
     };
 
   }, [loadPipelineData]);
+
+  useEffect(() => {
+
+    const initialHistoryLoad =
+      setTimeout(() => {
+
+        loadMetricsHistory();
+
+      }, 0);
+
+
+    return () => {
+
+      clearTimeout(
+        initialHistoryLoad
+      );
+
+    };
+
+  }, [loadMetricsHistory]);
 
   useEffect(() => {
 
@@ -2113,6 +2196,12 @@ function renderActiveView() {
 
             </div>
 
+            <MetricsHistoryChart
+              history={metricsHistory}
+              loading={historyLoading}
+              error={historyError}
+              onRefresh={loadMetricsHistory}
+            />
 
             {/* =========================
                 LOWER DASHBOARD

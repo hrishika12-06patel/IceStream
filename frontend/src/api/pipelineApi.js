@@ -220,3 +220,25 @@ export async function getPipelineStatus() {
     },
   };
 }
+
+/* =========================
+   PIPELINE METRICS HISTORY
+========================= */
+
+export async function getPipelineMetricsHistory(
+  limit = 20
+) {
+  const data = await apiRequest(
+    `/api/pipeline/metrics/history?limit=${limit}`
+  );
+
+  return {
+    count:
+      Number(data?.count) || 0,
+
+    history:
+      Array.isArray(data?.history)
+        ? data.history
+        : [],
+  };
+}
