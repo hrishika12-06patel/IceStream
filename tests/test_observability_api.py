@@ -19,6 +19,7 @@ from backend.services.pipeline_metrics import (
     get_incidents,
     get_iceberg_runtime_metrics,
     get_kafka_runtime_metrics,
+    get_pipeline_health_summary,
     get_pipeline_metrics,
     get_pipeline_metrics_history,
     get_pipeline_status,
@@ -882,6 +883,141 @@ def test_metrics_history_boundary_handling_exact_cutoff():
         result = get_pipeline_metrics_history(minutes=5)
         assert result["count"] == 2
         assert [s["transactions_processed"] for s in result["history"]] == [20, 30]
+
+
+# =========================================================
+# Pipeline Health Summary Endpoint Tests
+# =========================================================
+
+def test_pipeline_health_summary_all_healthy():
+    mock_kafka = {"status": "healthy", "topic": "transactions", "partition_count": 3, "total_messages": 100}
+    mock_flink = {"status": "healthy", "jobs_running": 1, "taskmanagers": 1, "records_in": 100, "records_out": 100}
+    mock_iceberg = {"status": "healthy", "snapshot_count": 1, "latest_snapshot_id": "123", "record_count": 100}
+
+    with patch("backend.services.pipeline_metrics.get_kafka_runtime_metrics", return_value=mock_kafka), \
+         patch("backend.services.pipeline_metrics.get_flink_runtime_metrics", return_value=mock_flink), \
+         patch("backend.services.pipeline_metrics.get_iceberg_runtime_metrics", return_value=mock_iceberg):
+
+        response = client.get("/api/pipeline/health-summary")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["overall_status"] == "healthy"
+        assert data["kafka_status"] == "healthy"
+        assert data["flink_status"] == "healthy"
+        assert data["iceberg_status"] == "healthy"
+        assert data["healthy_components"] == 3
+        assert data["total_components"] == 3
+        assert data["processing_errors"] == 0
+        assert "timestamp" in data
+
+
+def test_pipeline_health_summary_one_component_offline():
+    mock_kafka = {"status": "not_running", "bootstrap_servers": "localhost:9092", "topic": "transactions"}
+    mock_flink = {"status": "healthy", "jobs_running": 1, "taskmanagers": 1, "records_in": 50, "records_out": 50}
+    mock_iceberg = {"status": "healthy", "snapshot_count": 1, "latest_snapshot_id": "123", "record_count": 50}
+
+    with patch("backend.services.pipeline_metrics.get_kafka_runtime_metrics", return_value=mock_kafka), \
+         patch("backend.services.pipeline_metrics.get_flink_runtime_metrics", return_value=mock_flink), \
+         patch("backend.services.pipeline_metrics.get_iceberg_runtime_metrics", return_value=mock_iceberg):
+
+        response = client.get("/api/pipeline/health-summary")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["overall_status"] == "degraded"
+        assert data["kafka_status"] == "not_running"
+        assert data["flink_status"] == "healthy"
+        assert data["iceberg_status"] == "healthy"
+        assert data["healthy_components"] == 2
+        assert data["total_components"] == 3
+
+
+def test_pipeline_health_summary_all_components_offline():
+    mock_kafka = {"status": "not_running", "bootstrap_servers": "localhost:9092"}
+    mock_flink = {"status": "not_running", "jobs_running": 0}
+    mock_iceberg = {"status": "unavailable", "table_exists": False}
+
+    with patch("backend.services.pipeline_metrics.get_kafka_runtime_metrics", return_value=mock_kafka), \
+         patch("backend.services.pipeline_metrics.get_flink_runtime_metrics", return_value=mock_flink), \
+         patch("backend.services.pipeline_metrics.get_iceberg_runtime_metrics", return_value=mock_iceberg):
+
+        response = client.get("/api/pipeline/health-summary")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["overall_status"] == "unavailable"
+        assert data["kafka_status"] == "not_running"
+        assert data["flink_status"] == "not_running"
+        assert data["iceberg_status"] == "unavailable"
+        assert data["healthy_components"] == 0
+        assert data["total_components"] == 3
+        assert data["processing_errors"] is None
+
+
+def test_pipeline_health_summary_processing_errors_propagation():
+    # 1. When metrics source reports processed records, processing_errors should be 0
+    mock_kafka = {"status": "healthy", "topic": "transactions", "partition_count": 1, "total_messages": 50}
+    mock_flink = {"status": "not_running"}
+    mock_iceberg = {"status": "unavailable"}
+
+    with patch("backend.services.pipeline_metrics.get_kafka_runtime_metrics", return_value=mock_kafka), \
+         patch("backend.services.pipeline_metrics.get_flink_runtime_metrics", return_value=mock_flink), \
+         patch("backend.services.pipeline_metrics.get_iceberg_runtime_metrics", return_value=mock_iceberg):
+
+        response = client.get("/api/pipeline/health-summary")
+        assert response.status_code == 200
+        assert response.json()["processing_errors"] == 0
+
+    # 2. When metrics source is unavailable, processing_errors should preserve null
+    mock_kafka = {"status": "not_running"}
+    mock_flink = {"status": "not_running"}
+    mock_iceberg = {"status": "unavailable"}
+
+    with patch("backend.services.pipeline_metrics.get_kafka_runtime_metrics", return_value=mock_kafka), \
+         patch("backend.services.pipeline_metrics.get_flink_runtime_metrics", return_value=mock_flink), \
+         patch("backend.services.pipeline_metrics.get_iceberg_runtime_metrics", return_value=mock_iceberg):
+
+        response = client.get("/api/pipeline/health-summary")
+        assert response.status_code == 200
+        assert response.json()["processing_errors"] is None
+
+
+def test_pipeline_health_summary_utc_timestamp():
+    from datetime import datetime, timezone, timedelta
+
+    response = client.get("/api/pipeline/health-summary")
+    assert response.status_code == 200
+
+    data = response.json()
+    ts_str = data["timestamp"]
+    assert ts_str is not None
+
+    clean_ts = ts_str.replace("Z", "+00:00")
+    parsed_dt = datetime.fromisoformat(clean_ts)
+
+    # Verify timestamp is timezone aware and UTC offset is 0
+    assert parsed_dt.tzinfo is not None
+    assert parsed_dt.utcoffset() == timedelta(0)
+
+
+def test_pipeline_health_summary_response_schema():
+    response = client.get("/api/pipeline/health-summary")
+    assert response.status_code == 200
+
+    data = response.json()
+    expected_fields = {
+        "overall_status",
+        "kafka_status",
+        "flink_status",
+        "iceberg_status",
+        "healthy_components",
+        "total_components",
+        "processing_errors",
+        "timestamp",
+    }
+    assert set(data.keys()) == expected_fields
+
 
 
 

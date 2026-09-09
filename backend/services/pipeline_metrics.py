@@ -561,7 +561,7 @@ def record_pipeline_metrics_snapshot(metrics: Optional[Dict[str, Any]] = None) -
     return snapshot
 
 
-def get_pipeline_metrics(record_snapshot: bool = True) -> Dict[str, Any]:
+def get_pipeline_metrics(record_snapshot: bool = True, pipeline_st: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     GET /api/pipeline/metrics service logic.
     Aggregates truthful record-level metrics applying strict source priority:
@@ -570,7 +570,8 @@ def get_pipeline_metrics(record_snapshot: bool = True) -> Dict[str, Any]:
     3. Kafka total messages available (`kafka_offsets`)
     4. Unavailable (`unavailable`)
     """
-    pipeline_st = get_pipeline_status()
+    if pipeline_st is None:
+        pipeline_st = get_pipeline_status()
     overall = pipeline_st.get("overall_status", "unavailable")
     components = pipeline_st.get("components", {})
 
@@ -819,4 +820,40 @@ def get_lakehouse_status() -> Dict[str, Any]:
     GET /api/lakehouse service logic.
     """
     return get_iceberg_runtime_metrics()
+
+
+def get_pipeline_health_summary() -> Dict[str, Any]:
+    """
+    GET /api/pipeline/health-summary service logic.
+    Returns a concise health summary of the IceStream pipeline.
+    Reuses component status aggregation logic and metrics error tracking.
+    """
+    status_info = get_pipeline_status()
+    overall_st = status_info.get("overall_status", "unavailable")
+    components = status_info.get("components", {})
+
+    kafka_st = components.get("kafka", {}).get("status", "not_running")
+    flink_st = components.get("flink", {}).get("status", "not_running")
+    iceberg_st = components.get("iceberg", {}).get("status", "unavailable")
+
+    component_statuses = [kafka_st, flink_st, iceberg_st]
+    healthy_count = sum(1 for s in component_statuses if s == "healthy")
+    total_count = len(component_statuses)
+
+    metrics_info = get_pipeline_metrics(record_snapshot=False, pipeline_st=status_info)
+    proc_errors = metrics_info.get("processing_errors")
+
+    now_utc_str = datetime.now(timezone.utc).isoformat()
+
+    return {
+        "overall_status": overall_st,
+        "kafka_status": kafka_st,
+        "flink_status": flink_st,
+        "iceberg_status": iceberg_st,
+        "healthy_components": healthy_count,
+        "total_components": total_count,
+        "processing_errors": proc_errors,
+        "timestamp": now_utc_str,
+    }
+
 
