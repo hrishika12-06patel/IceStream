@@ -21,6 +21,7 @@ from backend.services.pipeline_metrics import (
     get_health_status,
     get_incidents,
     get_lakehouse_status,
+    get_pipeline_health_summary,
     get_pipeline_metrics,
     get_pipeline_metrics_history,
     get_pipeline_status,
@@ -70,6 +71,17 @@ class ComponentDetail(BaseModel):
 class PipelineStatusResponse(BaseModel):
     overall_status: str = Field(..., examples=["healthy"])
     components: Dict[str, ComponentDetail]
+
+
+class PipelineHealthSummaryResponse(BaseModel):
+    overall_status: str = Field(..., examples=["healthy"])
+    kafka_status: str = Field(..., examples=["healthy"])
+    flink_status: str = Field(..., examples=["healthy"])
+    iceberg_status: str = Field(..., examples=["healthy"])
+    healthy_components: int = Field(..., examples=[3])
+    total_components: int = Field(..., examples=[3])
+    processing_errors: Optional[int] = Field(None, examples=[0])
+    timestamp: str = Field(..., examples=["2026-09-09T12:56:00+00:00"])
 
 
 class PipelineMetricsResponse(BaseModel):
@@ -182,6 +194,14 @@ def pipeline_status():
     Returns derived status for streaming pipeline components (Kafka, Flink, Iceberg).
     """
     return get_pipeline_status()
+
+
+@app.get("/api/pipeline/health-summary", response_model=PipelineHealthSummaryResponse, tags=["Pipeline"])
+def pipeline_health_summary():
+    """
+    Returns a concise health summary of the IceStream pipeline.
+    """
+    return get_pipeline_health_summary()
 
 
 @app.get("/api/pipeline/metrics", response_model=PipelineMetricsResponse, tags=["Pipeline"])
