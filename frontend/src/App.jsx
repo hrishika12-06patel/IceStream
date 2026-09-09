@@ -1405,6 +1405,19 @@ function App() {
     setHistoryError,
   ] = useState("");
 
+  const [
+    historyMinutes,
+    setHistoryMinutes,
+  ] = useState(null);
+
+
+  const [
+    selectedHistoryMetric,
+    setSelectedHistoryMetric,
+  ] = useState(
+    "transactions_processed"
+  );
+
   const [searchOpen, setSearchOpen] =
     useState(false);
 
@@ -1469,13 +1482,13 @@ const loadMetricsHistory =
     try {
 
       setHistoryLoading(true);
-
       setHistoryError("");
 
 
       const data =
         await getPipelineMetricsHistory(
-          20
+          20,
+          historyMinutes
         );
 
 
@@ -1503,7 +1516,7 @@ const loadMetricsHistory =
 
     }
 
-  }, []);
+  }, [historyMinutes]);
 
   useEffect(() => {
 
@@ -2201,6 +2214,16 @@ function renderActiveView() {
               loading={historyLoading}
               error={historyError}
               onRefresh={loadMetricsHistory}
+              historyMinutes={historyMinutes}
+              onHistoryMinutesChange={
+                setHistoryMinutes
+              }
+              selectedMetric={
+                selectedHistoryMetric
+              }
+              onMetricChange={
+                setSelectedHistoryMetric
+              }
             />
 
             {/* =========================

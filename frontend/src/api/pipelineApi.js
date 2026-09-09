@@ -226,10 +226,26 @@ export async function getPipelineStatus() {
 ========================= */
 
 export async function getPipelineMetricsHistory(
-  limit = 20
+  limit = 20,
+  minutes = null
 ) {
+  const params =
+    new URLSearchParams();
+
+  params.set(
+    "limit",
+    String(limit)
+  );
+
+  if (minutes !== null) {
+    params.set(
+      "minutes",
+      String(minutes)
+    );
+  }
+
   const data = await apiRequest(
-    `/api/pipeline/metrics/history?limit=${limit}`
+    `/api/pipeline/metrics/history?${params.toString()}`
   );
 
   return {
