@@ -67,6 +67,9 @@ import HistoryView
 import MetricsHistoryChart
   from "./components/MetricsHistoryChart";
 
+import MetricsComparisonCard
+  from "./components/MetricsComparisonCard";
+
 /* -----------------------------
    Pipeline Custom Node
 ----------------------------- */
@@ -1418,6 +1421,23 @@ function App() {
     "transactions_processed"
   );
 
+  const [
+    comparisonHistory,
+    setComparisonHistory,
+  ] = useState([]);
+
+
+  const [
+    comparisonLoading,
+    setComparisonLoading,
+  ] = useState(true);
+
+
+  const [
+    comparisonError,
+    setComparisonError,
+  ] = useState("");
+
   const [searchOpen, setSearchOpen] =
     useState(false);
 
@@ -1518,6 +1538,48 @@ const loadMetricsHistory =
 
   }, [historyMinutes]);
 
+  const loadComparisonHistory =
+    useCallback(async () => {
+
+      try {
+
+        setComparisonLoading(true);
+
+        setComparisonError("");
+
+
+        const data =
+          await getPipelineMetricsHistory(
+            2
+          );
+
+
+        setComparisonHistory(
+          Array.isArray(data?.history)
+            ? data.history
+            : []
+        );
+
+      } catch (err) {
+
+        console.error(
+          "Metrics comparison API error:",
+          err
+        );
+
+
+        setComparisonError(
+          "Unable to load comparison data"
+        );
+
+      } finally {
+
+        setComparisonLoading(false);
+
+      }
+
+    }, []);
+
   useEffect(() => {
 
     const initialLoad =
@@ -1558,6 +1620,26 @@ const loadMetricsHistory =
     };
 
   }, [loadMetricsHistory]);
+
+  useEffect(() => {
+
+    const initialComparisonLoad =
+      setTimeout(() => {
+
+        loadComparisonHistory();
+
+      }, 0);
+
+
+    return () => {
+
+      clearTimeout(
+        initialComparisonLoad
+      );
+
+    };
+
+  }, [loadComparisonHistory]);
 
   useEffect(() => {
 
@@ -2208,6 +2290,15 @@ function renderActiveView() {
               />
 
             </div>
+
+            <MetricsComparisonCard
+              history={comparisonHistory}
+              loading={comparisonLoading}
+              error={comparisonError}
+              onRefresh={
+                loadComparisonHistory
+              }
+            />
 
             <MetricsHistoryChart
               history={metricsHistory}
