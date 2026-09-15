@@ -4885,3 +4885,105 @@
   }
 
 }
+
+/* =========================
+   SNAPSHOT TIMESTAMPS
+========================= */
+
+.comparison-snapshot-info {
+  display: flex;
+  align-items: center;
+
+  gap: 18px;
+
+  padding: 12px 17px;
+
+  border-bottom: 1px solid #17243a;
+
+  background:
+    rgba(8, 15, 27, 0.32);
+}
+
+
+.comparison-snapshot-item {
+  display: flex;
+  flex-direction: column;
+
+  gap: 4px;
+}
+
+
+.comparison-snapshot-label {
+  color: #586981;
+
+  font-size: 8px;
+  font-weight: 600;
+
+  text-transform: uppercase;
+
+  letter-spacing: 0.6px;
+}
+
+
+.comparison-snapshot-item strong {
+  color: #cbd5e1;
+
+  font-size: 10px;
+  font-weight: 600;
+}
+
+
+.comparison-snapshot-divider {
+  width: 1px;
+  height: 30px;
+
+  background: #24334b;
+}
+
+
+.comparison-snapshot-gap {
+  margin-left: auto;
+}
+
+
+.comparison-snapshot-gap span {
+  display: inline-flex;
+  align-items: center;
+
+  padding: 5px 8px;
+
+  border: 1px solid #24334b;
+
+  border-radius: 6px;
+
+  background:
+    rgba(59, 130, 246, 0.08);
+
+  color: #93c5fd;
+
+  font-size: 8px;
+  font-weight: 600;
+}
+
+
+@media (max-width: 650px) {
+
+  .comparison-snapshot-info {
+    align-items: flex-start;
+    flex-direction: column;
+
+    gap: 10px;
+  }
+
+
+  .comparison-snapshot-divider {
+    width: 100%;
+    height: 1px;
+  }
+
+
+  .comparison-snapshot-gap {
+    margin-left: 0;
+  }
+
+}
