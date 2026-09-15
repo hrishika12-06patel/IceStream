@@ -24,6 +24,103 @@ function formatValue(value) {
   return value.toLocaleString();
 }
 
+function parseTimestamp(timestamp) {
+  if (!timestamp) {
+    return null;
+  }
+
+  const date =
+    new Date(timestamp);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function formatSnapshotTime(timestamp) {
+  const date =
+    parseTimestamp(timestamp);
+
+  if (!date) {
+    return "—";
+  }
+
+  return date.toLocaleTimeString(
+    [],
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    }
+  );
+}
+
+function formatTimeDifference(
+  currentTimestamp,
+  previousTimestamp
+) {
+  const currentDate =
+    parseTimestamp(
+      currentTimestamp
+    );
+
+  const previousDate =
+    parseTimestamp(
+      previousTimestamp
+    );
+
+
+  if (
+    !currentDate ||
+    !previousDate
+  ) {
+    return "—";
+  }
+
+
+  const differenceMs =
+    Math.abs(
+      currentDate.getTime() -
+      previousDate.getTime()
+    );
+
+
+  const differenceSeconds =
+    Math.floor(
+      differenceMs / 1000
+    );
+
+
+  if (differenceSeconds < 60) {
+    return `${differenceSeconds} sec apart`;
+  }
+
+
+  const differenceMinutes =
+    Math.floor(
+      differenceSeconds / 60
+    );
+
+
+  if (differenceMinutes < 60) {
+    return `${differenceMinutes} min apart`;
+  }
+
+
+  const differenceHours =
+    Math.floor(
+      differenceMinutes / 60
+    );
+
+
+  return `${differenceHours} hr apart`;
+}
 
 function calculatePercentageChange(
   current,
@@ -295,6 +392,24 @@ function MetricsComparisonCard({
       history.length - 1
     ];
 
+  const currentSnapshotTime =
+    formatSnapshotTime(
+      current?.timestamp
+    );
+
+
+  const previousSnapshotTime =
+    formatSnapshotTime(
+      previous?.timestamp
+    );
+
+
+  const snapshotTimeDifference =
+    formatTimeDifference(
+      current?.timestamp,
+      previous?.timestamp
+    );
+
 
   return (
     <section className="dashboard-card comparison-card">
@@ -320,6 +435,47 @@ function MetricsComparisonCard({
           <RefreshCw size={13} />
           Refresh
         </button>
+
+      </div>
+
+      <div className="comparison-snapshot-info">
+
+        <div className="comparison-snapshot-item">
+
+          <span className="comparison-snapshot-label">
+            Current snapshot
+          </span>
+
+          <strong>
+            {currentSnapshotTime}
+          </strong>
+
+        </div>
+
+
+        <div className="comparison-snapshot-divider" />
+
+
+        <div className="comparison-snapshot-item">
+
+          <span className="comparison-snapshot-label">
+            Previous snapshot
+          </span>
+
+          <strong>
+            {previousSnapshotTime}
+          </strong>
+
+        </div>
+
+
+        <div className="comparison-snapshot-gap">
+
+          <span>
+            {snapshotTimeDifference}
+          </span>
+
+        </div>
 
       </div>
 
